@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 
 export function freshState() {
@@ -10,16 +11,22 @@ export async function createStore({ databaseUrl, stateFile }) {
   if (!databaseUrl) return fileStore(stateFile);
   const { default: pg } = await import("pg");
   const local = /@(localhost|127\.0\.0\.1)(:|\/)/.test(databaseUrl) || process.env.DATABASE_SSL === "false";
-  const pool = new pg.Pool({ connectionString: databaseUrl, max: 2, ssl: local ? false : { rejectUnauthorized: false } });
+  const pool = new pg.Pool({ connectionString: databaseUrl, max: 2, connectionTimeoutMillis: 8000, statement_timeout: 8000, ssl: local ? false : { rejectUnauthorized: false } });
   await pool.query("CREATE TABLE IF NOT EXISTS paper_bot_state (id TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE paper_bot_state ADD COLUMN IF NOT EXISTS writer_id UUID");
+  const writer = randomUUID();
   return {
     kind: "postgres",
     async load() {
-      const { rows } = await pool.query("SELECT data FROM paper_bot_state WHERE id = 'main'");
-      return rows.length ? { ...freshState(), ...rows[0].data } : freshState();
+      // A replacement instance takes over the latest committed checkpoint atomically.
+      const { rows } = await pool.query(`INSERT INTO paper_bot_state (id,data,writer_id)
+        VALUES ('main', $1, $2) ON CONFLICT (id) DO UPDATE SET writer_id=EXCLUDED.writer_id
+        RETURNING data`, [JSON.stringify(freshState()), writer]);
+      return { ...freshState(), ...rows[0].data };
     },
     async save(state) {
-      await pool.query("INSERT INTO paper_bot_state (id, data, updated_at) VALUES ('main', $1, now()) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()", [JSON.stringify(state)]);
+      const result = await pool.query("UPDATE paper_bot_state SET data=$1, updated_at=now() WHERE id='main' AND writer_id=$2", [JSON.stringify(state), writer]);
+      if (result.rowCount !== 1) throw new Error("A newer instance owns the checkpoint");
     },
     close: () => pool.end()
   };

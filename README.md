@@ -49,15 +49,15 @@ npm start
 
 ## Keep-alive
 
-On Render the bot pings its own public `/health` URL every 10 minutes (`RENDER_EXTERNAL_URL`, override with `KEEP_ALIVE_URL` / `KEEP_ALIVE_MS`) so the free service does not spin down. If it is down anyway, an external pinger (e.g. UptimeRobot) is needed to wake it.
+On Render the bot pings its own lightweight public `/healthz` URL at startup and every 10 minutes (`RENDER_EXTERNAL_URL`, override with `KEEP_ALIVE_URL` / `KEEP_ALIVE_MS`) to keep the service active. The dashboard reports the last successful self-ping. If it is down anyway, an external pinger (e.g. UptimeRobot) is needed to wake it.
 
 ## Persistence and evaluation
 
-With `DATABASE_URL` (any Postgres, e.g. Neon or Supabase free tier) the full state is stored in the table `paper_bot_state` every 15 seconds and on shutdown (`SIGTERM`), so cash, positions, trades and candles survive restarts and redeploys. Without it, a local JSON file is used (`STATE_FILE`).
+With `DATABASE_URL` (any Postgres, e.g. Neon or Supabase free tier) the full state is stored in the table `paper_bot_state` every 15 seconds , immediately after each paper buy/sell, and on graceful shutdown, so cash, positions, trades and candles survive restarts and redeploys. Locally, an optional JSON file (`STATE_FILE`) can be used. On Render, startup requires `DATABASE_URL`; a missing or unavailable database cannot silently start a fresh $100 account. A replacement instance resumes the same committed state and takes over the writer lease. Failed saves pause further trading until the pending state is saved.
 
 - Dashboard "Performance" panel: return, realized net P&L, win rate, profit factor, fees, average/best/worst trade, average hold time.
 - `/api/trades` (JSON) and `/api/trades.csv` export every closed trade.
 
 ## Render free-tier limitation
 
-`render.yaml` deliberately uses the `free` plan. Free web services may spin down when idle, and their filesystem is ephemeral. The JSON state file can therefore reset after a restart/redeploy, so this is a demonstration paper bot, **not** reliable 24/7 hosting or durable accounting. No paid disk, database, or other paid resource is configured.
+`render.yaml` deliberately uses the `free` plan. Free web services may spin down when idle, and their filesystem is ephemeral. Production state is stored in PostgreSQL outside that filesystem. A running instance can self-ping, but cannot wake itself once stopped. No paid disk, database, or other paid resource is configured.

@@ -8,25 +8,38 @@ import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
 import { currentQuotes, discoverCandidates } from "./market.js";
 import { createStore, resetDailyLossIfNeeded } from "./state.js";
+import { startHeartbeat } from "./heartbeat.js";
 import { computeStats, tradesCsv } from "./stats.js";
 
 assertPaperOnly();
+if (process.env.RENDER === "true" && !config.databaseUrl) throw new Error("DATABASE_URL is required on Render");
 const store = await createStore({ databaseUrl: config.databaseUrl, stateFile: config.stateFile });
 let state = await store.load();
 console.log(`State storage: ${store.kind}`);
 
-async function persist() {
-  try {
-    await store.save(state);
-    state.lastSavedAt = new Date().toISOString();
-  } catch (error) {
-    console.error("Saving state failed:", error.message);
-  }
+let pendingSave = Promise.resolve();
+let saveError = null;
+let outstanding = 0;
+function persist() {
+  outstanding++;
+  const snapshot = structuredClone(state);
+  snapshot.lastSavedAt = new Date().toISOString();
+  const write = pendingSave.then(async () => {
+    await store.save(snapshot);
+    state.lastSavedAt = snapshot.lastSavedAt;
+    saveError = null;
+  });
+  pendingSave = write.catch(() => {
+    saveError = "Checkpoint failed; trading paused until the next successful save";
+    console.error(saveError);
+  });
+  return write.finally(() => { outstanding--; });
 }
 let latestPrices = new Map();
 let lastError = null;
 let lastTickAt = null;
-let busy = false;
+let running = null;
+let stopping = false;
 let jupiterError = null;
 let rpcError = null;
 
@@ -40,9 +53,9 @@ async function refreshPriorityFee() {
 }
 
 async function exclusive(task) {
-  if (busy) return;
-  busy = true;
-  try { await task(); } finally { busy = false; }
+  if (stopping || running || saveError) return;
+  running = task();
+  try { await running; } finally { running = null; }
 }
 
 function recordCandle() {
@@ -62,6 +75,7 @@ async function refreshPrices() {
   resetDailyLossIfNeeded(state);
   for (const { position, price, reason } of exitsDue(state, latestPrices)) {
     closePosition(state, position, price, reason, undefined, undefined, await sellQuote(position, price));
+    await persist();
   }
 }
 
@@ -103,6 +117,7 @@ async function cycle() {
         if (!held.has(pick.token) && openPaperPosition(state, pick, undefined, undefined, await buyQuote(pick))) {
           held.add(pick.token);
           latestPrices.set(pick.token, pick.priceUsd);
+          await persist();
         }
       }
     }
@@ -119,39 +134,39 @@ async function cycle() {
 
 function status() {
   const portfolioUsd = portfolioValue(state, latestPrices);
-  return { mode: "paper", storage: store.kind, lastSavedAt: state.lastSavedAt || null, stats: computeStats(state, portfolioUsd, config.startingCapitalUsd), healthy: true, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioUsd.toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-20).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
+  return { mode: "paper", storage: store.kind, saveError, keepAlive: heartbeat.status, lastSavedAt: state.lastSavedAt || null, stats: computeStats(state, portfolioUsd, config.startingCapitalUsd), healthy: !saveError, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioUsd.toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-20).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
 }
 
-http.createServer((req, res) => {
+const heartbeat = startHeartbeat(config.keepAliveUrl, config.keepAliveMs);
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz") { res.writeHead(200, { "content-type":"text/plain", "cache-control":"no-store" }); return res.end("ok"); }
   if (req.url === "/") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return res.end(dashboardHtml); }
   if (req.url === "/api/trades.csv") { res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=paper-trades.csv" }); return res.end(tradesCsv(state.closedTrades)); }
   if (req.url === "/api/trades") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify(state.closedTrades)); }
   if (req.url === "/health" || req.url === "/api/status") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify(status())); }
   res.writeHead(404); res.end();
-}).listen(config.port, "0.0.0.0", () => console.log(`Paper bot health endpoint listening on ${config.port}`));
+}).listen(config.port, "0.0.0.0", () => { console.log(`Paper bot health endpoint listening on ${config.port}`); heartbeat.start(); });
 
-if (config.rpcUrl) {
-  await refreshPriorityFee();
-  setInterval(refreshPriorityFee, config.priorityFeeRefreshMs);
-}
-
-await exclusive(cycle);
-setInterval(() => exclusive(cycle), config.scanIntervalMs);
-setInterval(() => exclusive(tick), config.priceTickMs);
-setInterval(persist, CANDLE_MS);
-
-// Render sends SIGTERM before restarts and redeploys: save the latest state first.
+const timers = [];
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.once(signal, async () => {
-    console.log(`${signal} received, saving state`);
-    await persist();
-    await store.close().catch(() => {});
-    process.exit(0);
+    if (stopping) return;
+    stopping = true;
+    timers.forEach(clearInterval);
+    heartbeat.stop();
+    server.close();
+    await running;
+    let exitCode = 0;
+    try { await persist(); } catch { exitCode = 1; }
+    await store.close().catch(() => { exitCode = 1; });
+    process.exit(exitCode);
   });
 }
-
-if (config.keepAliveUrl) {
-  const target = new URL("/health", config.keepAliveUrl).href;
-  setInterval(() => fetch(target, { signal: AbortSignal.timeout(10_000) }).catch((e) => console.error("Keep-alive ping failed:", e.message)), config.keepAliveMs);
-  console.log(`Keep-alive ping every ${config.keepAliveMs / 1000}s -> ${target}`);
+if (config.rpcUrl) {
+  await refreshPriorityFee();
+  timers.push(setInterval(refreshPriorityFee, config.priorityFeeRefreshMs));
 }
+await exclusive(cycle);
+timers.push(setInterval(() => exclusive(cycle), config.scanIntervalMs));
+timers.push(setInterval(() => exclusive(tick), config.priceTickMs));
+timers.push(setInterval(() => { if (!outstanding) void persist().catch(() => {}); }, CANDLE_MS));
