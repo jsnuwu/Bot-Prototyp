@@ -9,3 +9,5 @@ services:
     envVars:
       - key: TRADING_MODE
         value: paper
+      - key: JUPITER_API_KEY
+        sync: false

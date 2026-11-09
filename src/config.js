@@ -11,6 +11,21 @@ export const config = Object.freeze({
   // Render free services sleep after ~15 min without inbound traffic.
   keepAliveUrl: process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL || "",
   keepAliveMs: Number(process.env.KEEP_ALIVE_MS || 600_000),
+  // Realistic execution costs applied to every simulated swap.
+  fees: Object.freeze({
+    dexFeePercent: Number(process.env.DEX_FEE_PERCENT || 0.25),
+    slippagePercent: Number(process.env.SLIPPAGE_PERCENT || 0.5),
+    baseFeeSol: 0.000005,
+    priorityFeeSol: Number(process.env.PRIORITY_FEE_SOL || 0.0005),
+    tokenAccountRentSol: 0.00203928,
+    defaultSolPriceUsd: 150
+  }),
+  // Jupiter quotes provide real route, DEX fee and price-impact data for every simulated swap.
+  jupiter: Object.freeze({
+    enabled: process.env.JUPITER_ENABLED !== "false",
+    apiKey: process.env.JUPITER_API_KEY || "",
+    baseUrl: process.env.JUPITER_API_URL || (process.env.JUPITER_API_KEY ? "https://api.jup.ag/swap/v1" : "https://lite-api.jup.ag/swap/v1")
+  }),
   port: Number(process.env.PORT || 10_000),
   stateFile: process.env.STATE_FILE || "data/state.json"
 });

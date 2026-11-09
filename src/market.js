@@ -18,12 +18,13 @@ export async function discoverCandidates() {
     const result = await request(`/latest/dex/tokens/${item.tokenAddress}`);
     const pair = (result.pairs || []).find((p) => p.chainId === "solana" && Number(p.priceUsd) > 0 && (p.liquidity?.usd || 0) >= 25_000 && (p.volume?.h24 || 0) >= 10_000);
     if (!pair) continue;
-    candidates.push({ token: pair.baseToken.address, symbol: pair.baseToken.symbol, priceUsd: Number(pair.priceUsd), pairUrl: pair.url, score: (pair.volume?.h24 || 0) / Math.max(pair.liquidity?.usd || 1, 1) });
+    candidates.push({ token: pair.baseToken.address, symbol: pair.baseToken.symbol, priceUsd: Number(pair.priceUsd), liquidityUsd: pair.liquidity?.usd || 0, pairUrl: pair.url, score: (pair.volume?.h24 || 0) / Math.max(pair.liquidity?.usd || 1, 1) });
   }
   return candidates.sort((a, b) => b.score - a.score);
 }
 
-export async function currentPrices(tokens) {
+// Returns token -> { priceUsd, liquidityUsd } using the most liquid Solana pair.
+export async function currentQuotes(tokens) {
   const prices = new Map();
   const unique = [...new Set(tokens)];
   // Batch endpoint: up to 30 token addresses per request.
@@ -35,7 +36,7 @@ export async function currentPrices(tokens) {
       if (p.chainId !== "solana" || !(Number(p.priceUsd) > 0) || !unique.includes(token)) continue;
       if ((p.liquidity?.usd || 0) >= (best.get(token)?.liquidity?.usd || -1)) best.set(token, p);
     }
-    for (const [token, pair] of best) prices.set(token, Number(pair.priceUsd));
+    for (const [token, pair] of best) prices.set(token, { priceUsd: Number(pair.priceUsd), liquidityUsd: pair.liquidity?.usd || 0 });
   }
   return prices;
 }

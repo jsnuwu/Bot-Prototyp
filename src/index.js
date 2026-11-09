@@ -2,8 +2,10 @@ import http from "node:http";
 import { assertPaperOnly, config } from "./config.js";
 import { addSample, CANDLE_MS } from "./candles.js";
 import { dashboardHtml } from "./dashboard.js";
-import { canOpen, closeEligiblePositions, openPaperPosition, portfolioValue } from "./engine.js";
-import { currentPrices, discoverCandidates } from "./market.js";
+import { canOpen, closePosition, exitsDue, openPaperPosition, portfolioValue } from "./engine.js";
+import { quoteBuy, quoteSell } from "./jupiter.js";
+import { SOL_MINT } from "./costs.js";
+import { currentQuotes, discoverCandidates } from "./market.js";
 import { loadState, resetDailyLossIfNeeded, saveState } from "./state.js";
 
 assertPaperOnly();
@@ -12,6 +14,7 @@ let latestPrices = new Map();
 let lastError = null;
 let lastTickAt = null;
 let busy = false;
+let jupiterError = null;
 
 async function exclusive(task) {
   if (busy) return;
@@ -24,11 +27,32 @@ function recordCandle() {
 }
 
 async function refreshPrices() {
-  if (state.positions.length) {
-    const fresh = await currentPrices(state.positions.map((p) => p.token));
-    latestPrices = new Map([...latestPrices, ...fresh]);
+  const quotes = await currentQuotes([SOL_MINT, ...state.positions.map((p) => p.token)]);
+  const sol = quotes.get(SOL_MINT);
+  if (sol) state.solPriceUsd = sol.priceUsd;
+  for (const position of state.positions) {
+    const quote = quotes.get(position.token);
+    if (!quote) continue;
+    latestPrices.set(position.token, quote.priceUsd);
+    position.liquidityUsd = quote.liquidityUsd;
   }
-  closeEligiblePositions(state, latestPrices);
+  resetDailyLossIfNeeded(state);
+  for (const { position, price, reason } of exitsDue(state, latestPrices)) {
+    closePosition(state, position, price, reason, undefined, undefined, await sellQuote(position, price));
+  }
+}
+
+// Real Jupiter quote when possible, otherwise null (the cost model is used instead).
+async function buyQuote(pick) {
+  if (!config.jupiter.enabled) return null;
+  try { const q = await quoteBuy({ mint: pick.token, amountUsd: config.maxTradeUsd, priceUsd: pick.priceUsd }); jupiterError = null; return q; }
+  catch (error) { jupiterError = error.message; return null; }
+}
+
+async function sellQuote(position, price) {
+  if (!config.jupiter.enabled || !position.rawTokens) return null;
+  try { const q = await quoteSell({ mint: position.token, rawTokens: position.rawTokens, tokens: position.tokens, priceUsd: price }); jupiterError = null; return q; }
+  catch (error) { jupiterError = error.message; return null; }
 }
 
 // Fast loop: updates prices of open positions and feeds the 15s candles.
@@ -53,7 +77,7 @@ async function cycle() {
       const held = new Set(state.positions.map((p) => p.token));
       for (const pick of candidates) {
         if (!canOpen(state)) break;
-        if (!held.has(pick.token) && openPaperPosition(state, pick)) {
+        if (!held.has(pick.token) && openPaperPosition(state, pick, undefined, undefined, await buyQuote(pick))) {
           held.add(pick.token);
           latestPrices.set(pick.token, pick.priceUsd);
         }
@@ -71,7 +95,7 @@ async function cycle() {
 }
 
 function status() {
-  return { mode: "paper", healthy: true, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioValue(state, latestPrices).toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-8).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
+  return { mode: "paper", healthy: true, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioValue(state, latestPrices).toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-8).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
 }
 
 http.createServer((req, res) => {

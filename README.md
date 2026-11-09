@@ -8,7 +8,7 @@ Simulation only. This service does **not** create wallets, store private keys, s
 - Maximum position: $5
 - Take profit: +15%
 - Stop loss: -8%
-- Maximum open positions: 3
+- Maximum open positions: 10
 - Maximum realised daily loss: $5
 
 The health/status endpoint is available at `/health`.
@@ -16,6 +16,26 @@ The health/status endpoint is available at `/health`.
 ## Live chart
 
 The dashboard at `/` shows the portfolio value as 15-second OHLC candles. Prices of open positions are polled every 3 seconds (`PRICE_TICK_MS`) via DexScreener's batch endpoint, aggregated server-side and persisted with the state, so the chart survives page reloads.
+
+## Realistic trading costs
+
+Every simulated swap is charged like a real one, so P&L is net:
+
+- **Swap price (DEX fee + price impact):** taken from a real Jupiter quote (`USDC ⇄ token`). Without a working quote the bot falls back to a model: 0.25 % DEX fee (`DEX_FEE_PERCENT`) plus constant-product price impact from DexScreener liquidity.
+- **Execution slippage:** extra 0.5 % per swap for price movement between quote and landing (`SLIPPAGE_PERCENT`).
+- **Network fees:** base fee + priority fee (`PRIORITY_FEE_SOL`, default 0.0005 SOL) per swap, converted at the live SOL price.
+- **Token account rent:** 0.00203928 SOL deposited on buy, refunded on sell.
+- **Portfolio value** is the net liquidation value (what selling everything now would return).
+
+Jupiter environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JUPITER_API_KEY` | – | API key from portal.jup.ag (sent as `x-api-key`) |
+| `JUPITER_API_URL` | `https://api.jup.ag/swap/v1` with key, else `https://lite-api.jup.ag/swap/v1` | Quote API base URL |
+| `JUPITER_ENABLED` | `true` | `false` = cost model only |
+
+Only quotes are requested. Nothing is signed or sent; no wallet or private key is used.
 
 ## Running locally
 

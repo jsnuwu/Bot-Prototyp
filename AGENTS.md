@@ -16,7 +16,9 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 | `src/dashboard.js` | Komplettes Dashboard-HTML/JS als String (Candlestick-Chart, Karten, Feeds) |
 | `src/candles.js` | `addSample()`: aggregiert Werte zu OHLC-Kerzen (15 s, max. 240) |
 | `src/engine.js` | Positionen öffnen/schließen (TP +15 %, SL −8 %), Portfoliowert |
-| `src/market.js` | DexScreener: Kandidatensuche, Batch-Preise (`/tokens/v1/solana/a,b,c`) |
+| `src/market.js` | DexScreener: Kandidatensuche, Batch-Quotes (Preis + Liquidität, `/tokens/v1/solana/a,b,c`) |
+| `src/jupiter.js` | Jupiter-Quotes (USDC ⇄ Token) für echte Swap-Kosten; nur Quotes, nichts wird signiert/gesendet |
+| `src/costs.js` | Kostenmodell (Fallback): DEX-Fee, Price-Impact, Slippage, Netzwerk-Fee, Token-Account-Rent |
 | `src/state.js` | JSON-State laden/speichern (`data/state.json`) |
 | `src/config.js` | Feste Risiko-Parameter + Env-Variablen |
 
@@ -42,7 +44,20 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 - Render Free schläft nach ~15 min ohne eingehenden Traffic; interne Timer zählen nicht.
 - Bot pingt sich alle 10 min selbst über die öffentliche URL.
 
+### Realistische Gebühren + Jupiter-Quotes
+- Jeder simulierte Kauf/Verkauf holt ein echtes Jupiter-Quote (`USDC → Token` bzw. `Token → USDC`, roher Token-Betrag in `position.rawTokens`). Swap-Kosten = Marktwert (DexScreener-Preis) − Quote-Ergebnis.
+- Token-Decimals werden aus Quote und Marktpreis abgeleitet (`raw * price / 10^d ≈ 5 $`).
+- Zusätzlich pro Swap: 0,5 % Ausführungs-Slippage, Netzwerk-Fee (Basis + Priority, live SOL-Preis), Token-Account-Rent (Kauf hinterlegt, Verkauf zurück).
+- Schlägt Jupiter fehl (kein Key, Rate-Limit, keine Route), greift das Kostenmodell in `src/costs.js`; Trades sind mit `pricing` / `exitPricing` = `jupiter` | `model` markiert.
+- Portfoliowert = Netto-Liquidationswert. Dashboard zeigt Realized P&L (netto), bezahlte Fees, SOL-Preis und Jupiter-Status.
+- Env: `JUPITER_API_KEY` (in Render setzen), optional `JUPITER_API_URL`, `JUPITER_ENABLED`, `DEX_FEE_PERCENT`, `SLIPPAGE_PERCENT`, `PRIORITY_FEE_SOL`.
+- TP/SL-Trigger bleiben preisbasiert (DexScreener-Kurs vs. Einstiegskurs), Gewinne/Verluste werden netto verbucht.
+- Tests: `test/engine.test.js`, `test/jupiter.test.js` (Jupiter per Mock-fetch).
+
 ## Bekannte Einschränkungen / offene Punkte
+
+- Jupiter-Anbindung ist nur mit Mocks getestet (keine Netzverbindung beim Entwickeln). Nach dem Deploy prüfen: Statuszeile im Dashboard muss „Swap pricing: Jupiter quotes“ zeigen.
+- Ohne `JUPITER_API_KEY` wird `lite-api.jup.ag` genutzt; falls der abgeschaltet ist, läuft nur das Kostenmodell.
 
 - Render-Free-Dateisystem ist flüchtig: Bei Neustart/Redeploy wird der State (Kapital 100 $, Kerzen, Trades) zurückgesetzt. Lösung wäre externer Speicher (z. B. kostenlose Datenbank).
 - Ist der Dienst trotzdem eingeschlafen/abgestürzt, weckt der Selbst-Ping ihn nicht – dafür externer Pinger (UptimeRobot, cron-job.org) auf `/health`.

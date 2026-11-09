@@ -1,20 +1,57 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { closeEligiblePositions, openPaperPosition } from "../src/engine.js";
+import { closeEligiblePositions, openPaperPosition, portfolioValue } from "../src/engine.js";
+import { simulateBuy, simulateSell } from "../src/costs.js";
 
-test("opens a $5 paper position and closes it at take profit", () => {
-  const state = { cashUsd: 100, positions: [], closedTrades: [], dailyLossUsd: 0, lossDate: new Date().toISOString().slice(0, 10) };
-  assert.equal(openPaperPosition(state, { token: "token", priceUsd: 1, pairUrl: "https://example.com" }), true);
+const today = () => new Date().toISOString().slice(0, 10);
+const noFees = { dexFeePercent: 0, slippagePercent: 0, baseFeeSol: 0, priorityFeeSol: 0, tokenAccountRentSol: 0, defaultSolPriceUsd: 150 };
+const fees = { dexFeePercent: 0.25, slippagePercent: 0.5, baseFeeSol: 0.000005, priorityFeeSol: 0.0005, tokenAccountRentSol: 0.002, defaultSolPriceUsd: 150 };
+const fresh = () => ({ cashUsd: 100, positions: [], closedTrades: [], dailyLossUsd: 0, lossDate: today(), solPriceUsd: 100 });
+
+test("without fees: opens $5 and closes at take profit for exactly +15%", () => {
+  const state = fresh();
+  assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 0 }, undefined, noFees), true);
   assert.equal(state.cashUsd, 95);
-  closeEligiblePositions(state, new Map([["token", 1.15]]));
-  assert.equal(state.positions.length, 0);
+  closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, noFees);
   assert.equal(state.closedTrades[0].reason, "take-profit");
-  assert.equal(state.cashUsd, 100.75);
+  assert.ok(Math.abs(state.cashUsd - 100.75) < 1e-9);
 });
 
-test("stop loss increments the daily loss", () => {
-  const state = { cashUsd: 95, positions: [{ token: "token", entryPriceUsd: 1, amountUsd: 5 }], closedTrades: [], dailyLossUsd: 0, lossDate: new Date().toISOString().slice(0, 10) };
-  closeEligiblePositions(state, new Map([["token", 0.92]]));
+test("with fees: buy and sell costs reduce the net result", () => {
+  const state = fresh();
+  openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 50_000 }, undefined, fees);
+  // $5 + network 0.000505 SOL + rent 0.002 SOL at $100/SOL
+  assert.ok(Math.abs(state.cashUsd - (100 - 5 - 0.0505 - 0.2)) < 1e-9);
+  assert.ok(state.positions[0].tokens < 5);
+  // Immediately after buying, the net liquidation value is below 100.
+  assert.ok(portfolioValue(state, new Map([["t", 1]]), fees) < 100);
+  closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, fees);
+  const trade = state.closedTrades[0];
+  assert.ok(trade.pnlUsd > 0 && trade.pnlUsd < 0.75, `net pnl ${trade.pnlUsd}`);
+  assert.ok(trade.feesUsd > 0.1);
+  // Rent is refunded, so cash = 100 + net pnl.
+  assert.ok(Math.abs(state.cashUsd - (100 + trade.pnlUsd)) < 1e-4);
+  assert.ok(state.feesPaidUsd > 0);
+});
+
+test("stop loss with fees counts the full net loss against the daily cap", () => {
+  const state = fresh();
+  openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 50_000 }, undefined, fees);
+  closeEligiblePositions(state, new Map([["t", 0.92]]), undefined, fees);
   assert.equal(state.closedTrades[0].reason, "stop-loss");
+  assert.ok(state.dailyLossUsd > 0.4);
+});
+
+test("price impact grows with lower liquidity", () => {
+  const deep = simulateBuy({ amountUsd: 5, priceUsd: 1, liquidityUsd: 1_000_000, solPriceUsd: 100 }, fees);
+  const thin = simulateBuy({ amountUsd: 5, priceUsd: 1, liquidityUsd: 20_000, solPriceUsd: 100 }, fees);
+  assert.ok(thin.feesUsd.impact > deep.feesUsd.impact);
+  const sell = simulateSell({ tokens: 5, priceUsd: 1, liquidityUsd: 20_000, solPriceUsd: 100, rentSol: 0.002 }, fees);
+  assert.ok(sell.cashInUsd < 5 + 0.2);
+});
+
+test("legacy positions without token amount still close", () => {
+  const state = { ...fresh(), cashUsd: 95, positions: [{ token: "t", entryPriceUsd: 1, amountUsd: 5 }] };
+  closeEligiblePositions(state, new Map([["t", 0.92]]), undefined, noFees);
   assert.equal(state.dailyLossUsd, 0.4);
 });

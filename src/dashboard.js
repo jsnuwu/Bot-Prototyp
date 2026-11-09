@@ -4,7 +4,7 @@ header{padding:18px 5%;border-bottom:1px solid #29313a;display:flex;justify-cont
 .brand{font-weight:900;letter-spacing:.16em}.brand b,.up{color:#26c281}.down{color:#ef5350}
 .tag,.pill{font-size:11px;padding:5px 8px;border:1px solid #356b57;border-radius:3px;color:#8cf0bd}.pill.loss{border-color:#6b3540;color:#f08b96}
 .wrap{max-width:1280px;margin:auto;padding:28px}h1{margin:6px 0 20px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card,.panel{background:#12161c;border:1px solid #29313a;border-radius:5px}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}.card,.panel{background:#12161c;border:1px solid #29313a;border-radius:5px}
 .card{padding:18px}.label,.muted{color:#8993a0;font-size:12px}.value{font-size:25px;font-weight:750;margin-top:8px}
 .layout{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-top:14px}.layout>*{min-width:0}
 .panel h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0;padding:15px 18px;border-bottom:1px solid #29313a}
@@ -18,18 +18,18 @@ header{padding:18px 5%;border-bottom:1px solid #29313a;display:flex;justify-cont
 .event{padding:12px 18px;border-bottom:1px solid #222831}.feed{max-height:340px;overflow:auto}
 .empty{padding:35px 18px;text-align:center;color:#8993a0}
 .notice{margin-top:14px;padding:12px;border-left:3px solid #f2b74d;background:#211d15;color:#d9c18a;font-size:12px}
-@media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}.wrap{padding:16px}.chart{height:280px}}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}.wrap{padding:16px}.chart{height:280px}}
 </style></head><body><header><div class="brand">KRYPTON <b>PAPER</b></div><div class="tag">SIMULATION ONLY</div></header>
 <main class="wrap"><p class="muted">SOLANA MEMECOIN DESK · 15 SECOND CANDLES</p><h1>Paper Trading Overview</h1>
-<section class="grid"><div class="card"><div class="label">Portfolio value</div><div class="value" id="portfolio">–</div></div><div class="card"><div class="label">Available cash</div><div class="value" id="cash">–</div></div><div class="card"><div class="label">Open positions</div><div class="value" id="positions">–</div></div><div class="card"><div class="label">Daily loss used</div><div class="value" id="loss">–</div></div></section>
+<section class="grid"><div class="card"><div class="label">Portfolio value (net)</div><div class="value" id="portfolio">–</div></div><div class="card"><div class="label">Available cash</div><div class="value" id="cash">–</div></div><div class="card"><div class="label">Open positions</div><div class="value" id="positions">–</div></div><div class="card"><div class="label">Daily loss used</div><div class="value" id="loss">–</div></div><div class="card"><div class="label">Realized P&amp;L (net)</div><div class="value" id="pnl">–</div></div><div class="card"><div class="label">Fees paid</div><div class="value" id="fees">–</div><div class="muted" id="sol"></div></div></section>
 <section class="layout"><div class="panel"><div class="chead"><h2>Portfolio · 15s</h2><div class="ohlc" id="ohlc"></div><div class="live"><i></i><span id="countdown">–</span></div></div><div class="chart" id="chart"><div class="empty">Waiting for the first candle…</div></div></div>
 <div class="panel"><h2>Live activity</h2><div id="activity" class="feed"><div class="empty">Waiting for the first scan</div></div></div></section>
 <section class="layout"><div class="panel"><h2>Open positions</h2><div id="position-list"><div class="empty">No active paper positions</div></div></div><div class="panel"><h2>Recent exits</h2><div id="trade-list"><div class="empty">No closed paper trades yet</div></div></div></section>
 <div class="notice" id="notice">Paper mode only. No wallet is connected and no on-chain transaction can be sent.</div><p class="muted" id="updated">Loading live status…</p></main>
 <script>
-const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n),short=t=>t.length>12?t.slice(0,7)+'…'+t.slice(-4):t;
+const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n),px=n=>n>=1?money(n):'$'+Number(n).toPrecision(4),short=t=>t.length>12?t.slice(0,7)+'…'+t.slice(-4):t;
 const UP='#26c281',DOWN='#ef5350';let candles=[],candleMs=15000,clockOffset=0,hover=null;
-function rows(a,kind){return a.length?a.map(x=>'<div class="row"><div><strong>'+short(x.token)+'</strong><div class="muted">'+(kind?x.reason:'Opened '+new Date(x.openedAt).toLocaleTimeString())+'</div></div><div class="muted">'+(kind?new Date(x.closedAt).toLocaleTimeString():'Entry '+money(x.entryPriceUsd))+'</div><div class="pill '+(kind&&x.pnlUsd<0?'loss':'')+'">'+(kind?(x.pnlUsd>=0?'+':'')+money(x.pnlUsd):money(x.amountUsd))+'</div></div>').join(''):'<div class="empty">No data yet</div>'}
+function rows(a,kind){return a.length?a.map(x=>'<div class="row"><div><strong>'+(x.symbol||short(x.token))+'</strong><div class="muted">'+(kind?x.reason+(x.feesUsd!=null?' · fees '+money(x.feesUsd):''):'Opened '+new Date(x.openedAt).toLocaleTimeString()+(x.buyFeesUsd!=null?' · fees '+money(x.buyFeesUsd):''))+'</div></div><div class="muted">'+(kind?new Date(x.closedAt).toLocaleTimeString():'Entry '+px(x.entryPriceUsd)+(x.fillPriceUsd?' · fill '+px(x.fillPriceUsd):''))+'</div><div class="pill '+(kind&&x.pnlUsd<0?'loss':'')+'">'+(kind?(x.pnlUsd>=0?'+':'')+money(x.pnlUsd):money(x.amountUsd))+'</div></div>').join(''):'<div class="empty">No data yet</div>'}
 function decimals(range){return range<0.01?4:range<1?3:2}
 function fmt(v,d){return v.toFixed(d)}
 function draw(){
@@ -57,10 +57,10 @@ function tickCountdown(){const now=Date.now()+clockOffset,left=Math.ceil((candle
 async function refresh(){try{
   const s=await fetch('/api/status',{cache:'no-store'}).then(r=>r.json());
   clockOffset=s.serverTime?Date.parse(s.serverTime)-Date.now():0;candleMs=s.candleMs||15000;candles=s.candles||[];
-  $('portfolio').textContent=money(s.portfolioUsd);$('cash').textContent=money(s.cashUsd);$('positions').textContent=s.openPositions+' / '+s.maxOpenPositions;$('loss').textContent=money(s.dailyLossUsd)+' / $5.00';
+  $('portfolio').textContent=money(s.portfolioUsd);$('cash').textContent=money(s.cashUsd);$('positions').textContent=s.openPositions+' / '+s.maxOpenPositions;$('loss').textContent=money(s.dailyLossUsd)+' / $5.00';$('pnl').textContent=(s.realizedPnlUsd>=0?'+':'')+money(s.realizedPnlUsd);$('pnl').className='value '+(s.realizedPnlUsd<0?'down':'up');$('fees').textContent=money(s.feesPaidUsd);$('sol').textContent=s.solPriceUsd?'SOL '+money(s.solPriceUsd):'';
   draw();$('position-list').innerHTML=rows(s.positions);$('trade-list').innerHTML=rows(s.closedTrades,true);
   $('activity').innerHTML=s.events.length?s.events.map(e=>'<div class="event"><strong class="'+(e.type==='stop-loss'?'down':'up')+'">'+e.type+'</strong><div>'+e.detail+'</div><div class="muted">'+new Date(e.at).toLocaleTimeString()+'</div></div>').join(''):'<div class="empty">Waiting for the first scan</div>';
-  $('updated').textContent='Last price tick: '+(s.lastTickAt?new Date(s.lastTickAt).toLocaleTimeString():'waiting')+' · Last scan: '+(s.lastScanAt?new Date(s.lastScanAt).toLocaleTimeString():'waiting');
+  $('updated').textContent='Last price tick: '+(s.lastTickAt?new Date(s.lastTickAt).toLocaleTimeString():'waiting')+' · Last scan: '+(s.lastScanAt?new Date(s.lastScanAt).toLocaleTimeString():'waiting')+' · Swap pricing: '+(!s.jupiter?.enabled?'cost model':s.jupiter.lastError?'cost model (Jupiter: '+s.jupiter.lastError+')':'Jupiter quotes'+(s.jupiter.authenticated?'':' (no API key)'));
   $('notice').textContent=s.lastError?'Market data temporarily unavailable: '+s.lastError:'Paper mode only. No wallet is connected and no on-chain transaction can be sent.';
 }catch{$('updated').textContent='Status temporarily unavailable'}}
 refresh();setInterval(refresh,2000);setInterval(tickCountdown,250);addEventListener('resize',draw);
