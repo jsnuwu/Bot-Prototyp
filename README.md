@@ -1,0 +1,28 @@
+# Solana Memecoin Paper Bot
+
+Simulation only. This service does **not** create wallets, store private keys, sign transactions, or send trades. It gets public price data from DexScreener and models positions locally.
+
+## Fixed risk controls
+
+- Starting virtual cash: $100
+- Maximum position: $5
+- Take profit: +15%
+- Stop loss: -8%
+- Maximum open positions: 3
+- Maximum realised daily loss: $5
+
+The health/status endpoint is available at `/health`.
+
+## Running locally
+
+Requires Node.js 20 or later:
+
+```bash
+npm ci
+npm test
+npm start
+```
+
+## Render free-tier limitation
+
+`render.yaml` deliberately uses the `free` plan. Free web services may spin down when idle, and their filesystem is ephemeral. The JSON state file can therefore reset after a restart/redeploy, so this is a demonstration paper bot, **not** reliable 24/7 hosting or durable accounting. No paid disk, database, or other paid resource is configured.

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: solana-paper-bot
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: TRADING_MODE
+        value: paper

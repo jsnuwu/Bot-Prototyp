@@ -1,0 +1,14 @@
+{
+  "name": "solana-memecoin-paper-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A simulation-only Solana memecoin paper-trading bot.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
