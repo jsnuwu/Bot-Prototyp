@@ -2,9 +2,10 @@ import { config } from "./config.js";
 import { resetDailyLossIfNeeded } from "./state.js";
 
 export function canOpen(state) {
+  const worstCaseLoss = config.maxTradeUsd * (config.stopLossPercent / 100);
   return state.positions.length < config.maxOpenPositions &&
     state.cashUsd >= config.maxTradeUsd &&
-    state.dailyLossUsd < config.maxDailyLossUsd;
+    state.dailyLossUsd + worstCaseLoss <= config.maxDailyLossUsd;
 }
 
 export function openPaperPosition(state, candidate, now = new Date().toISOString()) {
