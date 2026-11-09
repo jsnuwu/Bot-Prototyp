@@ -13,6 +13,10 @@ Simulation only. This service does **not** create wallets, store private keys, s
 
 The health/status endpoint is available at `/health`.
 
+## Live chart
+
+The dashboard at `/` shows the portfolio value as 15-second OHLC candles. Prices of open positions are polled every 3 seconds (`PRICE_TICK_MS`) via DexScreener's batch endpoint, aggregated server-side and persisted with the state, so the chart survives page reloads.
+
 ## Running locally
 
 Requires Node.js 20 or later:

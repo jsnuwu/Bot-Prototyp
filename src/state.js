@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export function freshState() {
-  return { cashUsd: 100, positions: [], closedTrades: [], events: [], history: [], dailyLossUsd: 0, lossDate: new Date().toISOString().slice(0, 10), lastScanAt: null };
+  return { cashUsd: 100, positions: [], closedTrades: [], events: [], history: [], candles: [], dailyLossUsd: 0, lossDate: new Date().toISOString().slice(0, 10), lastScanAt: null };
 }
 
 export async function loadState(file) {

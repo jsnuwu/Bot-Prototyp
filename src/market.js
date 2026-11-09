@@ -25,10 +25,17 @@ export async function discoverCandidates() {
 
 export async function currentPrices(tokens) {
   const prices = new Map();
-  for (const token of tokens) {
-    const result = await request(`/latest/dex/tokens/${token}`);
-    const pair = (result.pairs || []).find((p) => p.chainId === "solana" && Number(p.priceUsd) > 0);
-    if (pair) prices.set(token, Number(pair.priceUsd));
+  const unique = [...new Set(tokens)];
+  // Batch endpoint: up to 30 token addresses per request.
+  for (let i = 0; i < unique.length; i += 30) {
+    const pairs = await request(`/tokens/v1/solana/${unique.slice(i, i + 30).join(",")}`);
+    const best = new Map();
+    for (const p of Array.isArray(pairs) ? pairs : []) {
+      const token = p.baseToken?.address;
+      if (p.chainId !== "solana" || !(Number(p.priceUsd) > 0) || !unique.includes(token)) continue;
+      if ((p.liquidity?.usd || 0) >= (best.get(token)?.liquidity?.usd || -1)) best.set(token, p);
+    }
+    for (const [token, pair] of best) prices.set(token, Number(pair.priceUsd));
   }
   return prices;
 }

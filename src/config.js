@@ -7,6 +7,7 @@ export const config = Object.freeze({
   maxOpenPositions: 10,
   maxDailyLossUsd: 5,
   scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 90_000),
+  priceTickMs: Number(process.env.PRICE_TICK_MS || 3_000),
   port: Number(process.env.PORT || 10_000),
   stateFile: process.env.STATE_FILE || "data/state.json"
 });
