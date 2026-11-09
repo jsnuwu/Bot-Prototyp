@@ -11,3 +11,5 @@ services:
         value: paper
       - key: JUPITER_API_KEY
         sync: false
+      - key: SOLANA_RPC_URL
+        sync: false

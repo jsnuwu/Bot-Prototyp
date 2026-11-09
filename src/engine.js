@@ -4,6 +4,9 @@ import { resetDailyLossIfNeeded } from "./state.js";
 
 const solPrice = (state) => state.solPriceUsd || config.fees.defaultSolPriceUsd;
 
+// Uses the live priority fee from the Solana RPC once it is known.
+const liveFees = (state) => (Number.isFinite(state.priorityFeeSol) ? { ...config.fees, priorityFeeSol: state.priorityFeeSol } : config.fees);
+
 // Positions opened before fees were modelled have no token amount stored.
 function normalise(position) {
   return {
@@ -14,7 +17,7 @@ function normalise(position) {
   };
 }
 
-export function canOpen(state, fees = config.fees) {
+export function canOpen(state, fees = liveFees(state)) {
   const sol = solPrice(state);
   const network = networkFeeUsd(sol, fees);
   const roundTripCosts = 2 * network + config.maxTradeUsd * 2 * (fees.dexFeePercent + fees.slippagePercent) / 100;
@@ -25,7 +28,7 @@ export function canOpen(state, fees = config.fees) {
 }
 
 // `execution` (optional) is a real Jupiter quote from jupiter.js; without it the cost model in costs.js is used.
-export function openPaperPosition(state, candidate, now = new Date().toISOString(), fees = config.fees, execution = null) {
+export function openPaperPosition(state, candidate, now = new Date().toISOString(), fees = liveFees(state), execution = null) {
   if (!canOpen(state, fees) || !(candidate.priceUsd > 0)) return false;
   const amount = config.maxTradeUsd;
   const sol = solPrice(state);
@@ -60,7 +63,7 @@ export function exitsDue(state, prices) {
   });
 }
 
-export function closePosition(state, raw, price, reason, now = new Date().toISOString(), fees = config.fees, execution = null) {
+export function closePosition(state, raw, price, reason, now = new Date().toISOString(), fees = liveFees(state), execution = null) {
   const position = normalise(raw);
   const sol = solPrice(state);
   const network = networkFeeUsd(sol, fees);
@@ -88,13 +91,13 @@ export function closePosition(state, raw, price, reason, now = new Date().toISOS
 }
 
 // Synchronous variant using the cost model only.
-export function closeEligiblePositions(state, prices, now = new Date().toISOString(), fees = config.fees) {
+export function closeEligiblePositions(state, prices, now = new Date().toISOString(), fees = liveFees(state)) {
   resetDailyLossIfNeeded(state);
   for (const exit of exitsDue(state, prices)) closePosition(state, exit.position, exit.price, exit.reason, now, fees);
 }
 
 // Net liquidation value: cash plus what every position would return if sold now.
-export function portfolioValue(state, prices = new Map(), fees = config.fees) {
+export function portfolioValue(state, prices = new Map(), fees = liveFees(state)) {
   return state.cashUsd + state.positions.reduce((total, raw) => {
     const p = normalise(raw);
     const price = prices.get(p.token) || p.entryPriceUsd;

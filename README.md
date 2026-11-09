@@ -23,7 +23,7 @@ Every simulated swap is charged like a real one, so P&L is net:
 
 - **Swap price (DEX fee + price impact):** taken from a real Jupiter quote (`USDC ⇄ token`). Without a working quote the bot falls back to a model: 0.25 % DEX fee (`DEX_FEE_PERCENT`) plus constant-product price impact from DexScreener liquidity.
 - **Execution slippage:** extra 0.5 % per swap for price movement between quote and landing (`SLIPPAGE_PERCENT`).
-- **Network fees:** base fee + priority fee (`PRIORITY_FEE_SOL`, default 0.0005 SOL) per swap, converted at the live SOL price.
+- **Network fees:** base fee + priority fee per swap, converted at the live SOL price. With `SOLANA_RPC_URL` set, the priority fee is refreshed every minute from `getRecentPrioritizationFees` (75th percentile of non-zero fees × 300k compute units, capped at 0.01 SOL); otherwise `PRIORITY_FEE_SOL` (default 0.0005 SOL) is used.
 - **Token account rent:** 0.00203928 SOL deposited on buy, refunded on sell.
 - **Portfolio value** is the net liquidation value (what selling everything now would return).
 

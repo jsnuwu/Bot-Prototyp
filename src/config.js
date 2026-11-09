@@ -26,6 +26,8 @@ export const config = Object.freeze({
     apiKey: process.env.JUPITER_API_KEY || "",
     baseUrl: process.env.JUPITER_API_URL || (process.env.JUPITER_API_KEY ? "https://api.jup.ag/swap/v1" : "https://lite-api.jup.ag/swap/v1")
   }),
+  rpcUrl: process.env.SOLANA_RPC_URL || "",
+  priorityFeeRefreshMs: 60_000,
   port: Number(process.env.PORT || 10_000),
   stateFile: process.env.STATE_FILE || "data/state.json"
 });

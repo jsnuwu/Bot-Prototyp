@@ -18,6 +18,7 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 | `src/engine.js` | Positionen öffnen/schließen (TP +15 %, SL −8 %), Portfoliowert |
 | `src/market.js` | DexScreener: Kandidatensuche, Batch-Quotes (Preis + Liquidität, `/tokens/v1/solana/a,b,c`) |
 | `src/jupiter.js` | Jupiter-Quotes (USDC ⇄ Token) für echte Swap-Kosten; nur Quotes, nichts wird signiert/gesendet |
+| `src/rpc.js` | Live-Priority-Fee über `SOLANA_RPC_URL` (`getRecentPrioritizationFees`, p75 × 300k CU) |
 | `src/costs.js` | Kostenmodell (Fallback): DEX-Fee, Price-Impact, Slippage, Netzwerk-Fee, Token-Account-Rent |
 | `src/state.js` | JSON-State laden/speichern (`data/state.json`) |
 | `src/config.js` | Feste Risiko-Parameter + Env-Variablen |
@@ -28,6 +29,7 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 - **Preis-Tick** alle 3 s (`PRICE_TICK_MS`): Preise offener Positionen holen, TP/SL prüfen, Portfoliowert als Kerzen-Sample erfassen.
 - Scan und Tick laufen über `exclusive()` nie gleichzeitig.
 - **State speichern** alle 15 s (inkl. `state.candles`).
+- **Priority-Fee** alle 60 s über `SOLANA_RPC_URL` (falls gesetzt), gespeichert in `state.priorityFeeSol`.
 - **Keep-alive** alle 10 min: GET auf eigene `/health`-URL (`RENDER_EXTERNAL_URL` bzw. `KEEP_ALIVE_URL`, Intervall `KEEP_ALIVE_MS`).
 
 ## Änderungsverlauf
@@ -54,7 +56,13 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 - TP/SL-Trigger bleiben preisbasiert (DexScreener-Kurs vs. Einstiegskurs), Gewinne/Verluste werden netto verbucht.
 - Tests: `test/engine.test.js`, `test/jupiter.test.js` (Jupiter per Mock-fetch).
 
+### Live-Priority-Fees über Solana-RPC
+- `src/rpc.js` holt jede Minute die aktuellen Priority-Fees; Engine nutzt sie automatisch statt `PRIORITY_FEE_SOL`.
+- Render-Env des Services: `JUPITER_API_KEY`, `SOLANA_RPC_URL`, `TRADING_MODE`. Keine Datenbank → State wird bei Neustart zurückgesetzt.
+
 ## Bekannte Einschränkungen / offene Punkte
+
+- Globale Priority-Fees (p75) liegen oft unter dem, was Memecoin-Bots in hektischen Phasen zahlen (inkl. Jito-Tips). Bei Bedarf Perzentil erhöhen oder Mindestwert einführen.
 
 - Jupiter-Anbindung ist nur mit Mocks getestet (keine Netzverbindung beim Entwickeln). Nach dem Deploy prüfen: Statuszeile im Dashboard muss „Swap pricing: Jupiter quotes“ zeigen.
 - Ohne `JUPITER_API_KEY` wird `lite-api.jup.ag` genutzt; falls der abgeschaltet ist, läuft nur das Kostenmodell.
