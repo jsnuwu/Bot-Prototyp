@@ -27,6 +27,10 @@ npm test
 npm start
 ```
 
+## Keep-alive
+
+On Render the bot pings its own public `/health` URL every 10 minutes (`RENDER_EXTERNAL_URL`, override with `KEEP_ALIVE_URL` / `KEEP_ALIVE_MS`) so the free service does not spin down. If it is down anyway, an external pinger (e.g. UptimeRobot) is needed to wake it.
+
 ## Render free-tier limitation
 
 `render.yaml` deliberately uses the `free` plan. Free web services may spin down when idle, and their filesystem is ephemeral. The JSON state file can therefore reset after a restart/redeploy, so this is a demonstration paper bot, **not** reliable 24/7 hosting or durable accounting. No paid disk, database, or other paid resource is configured.

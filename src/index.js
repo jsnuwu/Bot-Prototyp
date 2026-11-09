@@ -84,3 +84,9 @@ await exclusive(cycle);
 setInterval(() => exclusive(cycle), config.scanIntervalMs);
 setInterval(() => exclusive(tick), config.priceTickMs);
 setInterval(() => saveState(config.stateFile, state).catch((e) => console.error("Saving state failed:", e.message)), CANDLE_MS);
+
+if (config.keepAliveUrl) {
+  const target = new URL("/health", config.keepAliveUrl).href;
+  setInterval(() => fetch(target, { signal: AbortSignal.timeout(10_000) }).catch((e) => console.error("Keep-alive ping failed:", e.message)), config.keepAliveMs);
+  console.log(`Keep-alive ping every ${config.keepAliveMs / 1000}s -> ${target}`);
+}

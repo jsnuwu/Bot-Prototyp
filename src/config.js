@@ -8,6 +8,9 @@ export const config = Object.freeze({
   maxDailyLossUsd: 5,
   scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 90_000),
   priceTickMs: Number(process.env.PRICE_TICK_MS || 3_000),
+  // Render free services sleep after ~15 min without inbound traffic.
+  keepAliveUrl: process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL || "",
+  keepAliveMs: Number(process.env.KEEP_ALIVE_MS || 600_000),
   port: Number(process.env.PORT || 10_000),
   stateFile: process.env.STATE_FILE || "data/state.json"
 });
