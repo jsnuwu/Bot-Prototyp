@@ -7,10 +7,22 @@ import { quoteBuy, quoteSell } from "./jupiter.js";
 import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
 import { currentQuotes, discoverCandidates } from "./market.js";
-import { loadState, resetDailyLossIfNeeded, saveState } from "./state.js";
+import { createStore, resetDailyLossIfNeeded } from "./state.js";
+import { computeStats, tradesCsv } from "./stats.js";
 
 assertPaperOnly();
-let state = await loadState(config.stateFile);
+const store = await createStore({ databaseUrl: config.databaseUrl, stateFile: config.stateFile });
+let state = await store.load();
+console.log(`State storage: ${store.kind}`);
+
+async function persist() {
+  try {
+    await store.save(state);
+    state.lastSavedAt = new Date().toISOString();
+  } catch (error) {
+    console.error("Saving state failed:", error.message);
+  }
+}
 let latestPrices = new Map();
 let lastError = null;
 let lastTickAt = null;
@@ -98,7 +110,7 @@ async function cycle() {
     state.history = [...(state.history || []), { at: state.lastScanAt, valueUsd: Number(portfolioValue(state, latestPrices).toFixed(4)) }].slice(-120);
     recordCandle();
     lastError = null;
-    await saveState(config.stateFile, state);
+    await persist();
   } catch (error) {
     lastError = error.message;
     console.error("Paper-trading cycle failed:", error.message);
@@ -106,11 +118,14 @@ async function cycle() {
 }
 
 function status() {
-  return { mode: "paper", healthy: true, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioValue(state, latestPrices).toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-8).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
+  const portfolioUsd = portfolioValue(state, latestPrices);
+  return { mode: "paper", storage: store.kind, lastSavedAt: state.lastSavedAt || null, stats: computeStats(state, portfolioUsd, config.startingCapitalUsd), healthy: true, serverTime: new Date().toISOString(), cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioUsd.toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number(state.dailyLossUsd.toFixed(2)), feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-20).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles };
 }
 
 http.createServer((req, res) => {
   if (req.url === "/") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return res.end(dashboardHtml); }
+  if (req.url === "/api/trades.csv") { res.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=paper-trades.csv" }); return res.end(tradesCsv(state.closedTrades)); }
+  if (req.url === "/api/trades") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify(state.closedTrades)); }
   if (req.url === "/health" || req.url === "/api/status") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify(status())); }
   res.writeHead(404); res.end();
 }).listen(config.port, "0.0.0.0", () => console.log(`Paper bot health endpoint listening on ${config.port}`));
@@ -123,7 +138,17 @@ if (config.rpcUrl) {
 await exclusive(cycle);
 setInterval(() => exclusive(cycle), config.scanIntervalMs);
 setInterval(() => exclusive(tick), config.priceTickMs);
-setInterval(() => saveState(config.stateFile, state).catch((e) => console.error("Saving state failed:", e.message)), CANDLE_MS);
+setInterval(persist, CANDLE_MS);
+
+// Render sends SIGTERM before restarts and redeploys: save the latest state first.
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, async () => {
+    console.log(`${signal} received, saving state`);
+    await persist();
+    await store.close().catch(() => {});
+    process.exit(0);
+  });
+}
 
 if (config.keepAliveUrl) {
   const target = new URL("/health", config.keepAliveUrl).href;

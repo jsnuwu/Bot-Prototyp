@@ -51,6 +51,13 @@ npm start
 
 On Render the bot pings its own public `/health` URL every 10 minutes (`RENDER_EXTERNAL_URL`, override with `KEEP_ALIVE_URL` / `KEEP_ALIVE_MS`) so the free service does not spin down. If it is down anyway, an external pinger (e.g. UptimeRobot) is needed to wake it.
 
+## Persistence and evaluation
+
+With `DATABASE_URL` (any Postgres, e.g. Neon or Supabase free tier) the full state is stored in the table `paper_bot_state` every 15 seconds and on shutdown (`SIGTERM`), so cash, positions, trades and candles survive restarts and redeploys. Without it, a local JSON file is used (`STATE_FILE`).
+
+- Dashboard "Performance" panel: return, realized net P&L, win rate, profit factor, fees, average/best/worst trade, average hold time.
+- `/api/trades` (JSON) and `/api/trades.csv` export every closed trade.
+
 ## Render free-tier limitation
 
 `render.yaml` deliberately uses the `free` plan. Free web services may spin down when idle, and their filesystem is ephemeral. The JSON state file can therefore reset after a restart/redeploy, so this is a demonstration paper bot, **not** reliable 24/7 hosting or durable accounting. No paid disk, database, or other paid resource is configured.

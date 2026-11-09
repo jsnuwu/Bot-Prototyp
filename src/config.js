@@ -29,6 +29,7 @@ export const config = Object.freeze({
   rpcUrl: process.env.SOLANA_RPC_URL || "",
   priorityFeeRefreshMs: 60_000,
   port: Number(process.env.PORT || 10_000),
+  databaseUrl: process.env.DATABASE_URL || "",
   stateFile: process.env.STATE_FILE || "data/state.json"
 });
 

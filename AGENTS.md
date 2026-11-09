@@ -20,7 +20,8 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 | `src/jupiter.js` | Jupiter-Quotes (USDC ⇄ Token) für echte Swap-Kosten; nur Quotes, nichts wird signiert/gesendet |
 | `src/rpc.js` | Live-Priority-Fee über `SOLANA_RPC_URL` (`getRecentPrioritizationFees`, p75 × 300k CU) |
 | `src/costs.js` | Kostenmodell (Fallback): DEX-Fee, Price-Impact, Slippage, Netzwerk-Fee, Token-Account-Rent |
-| `src/state.js` | JSON-State laden/speichern (`data/state.json`) |
+| `src/state.js` | Speicher: Postgres (`DATABASE_URL`, Tabelle `paper_bot_state`, eine Zeile `main` mit JSONB) oder JSON-Datei |
+| `src/stats.js` | Auswertung (Win-Rate, Profit-Factor, Return …) und CSV-Export |
 | `src/config.js` | Feste Risiko-Parameter + Env-Variablen |
 
 ## Laufzeit-Ablauf
@@ -58,7 +59,13 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 
 ### Live-Priority-Fees über Solana-RPC
 - `src/rpc.js` holt jede Minute die aktuellen Priority-Fees; Engine nutzt sie automatisch statt `PRIORITY_FEE_SOL`.
-- Render-Env des Services: `JUPITER_API_KEY`, `SOLANA_RPC_URL`, `TRADING_MODE`. Keine Datenbank → State wird bei Neustart zurückgesetzt.
+- Render-Env des Services: `JUPITER_API_KEY`, `SOLANA_RPC_URL`, `TRADING_MODE`, `DATABASE_URL`.
+
+### Dauerhafte Speicherung + Auswertung
+- State in Postgres über `DATABASE_URL` (SSL außer bei localhost bzw. `DATABASE_SSL=false`), gespeichert alle 15 s und bei SIGTERM/SIGINT.
+- Ist die DB beim Start nicht erreichbar, beendet sich der Prozess (Render startet neu), damit nie ein leerer State die DB überschreibt.
+- Endpunkte: `/api/trades` (JSON), `/api/trades.csv`. Dashboard-Panel „Performance“. `startedAt` im State = Beginn der Auswertung.
+- Getestet gegen lokale Postgres 16 inkl. Neustart per SIGTERM.
 
 ## Bekannte Einschränkungen / offene Punkte
 
@@ -67,6 +74,6 @@ Simulation-only Solana-Memecoin-Paper-Trading-Bot (Node ≥ 20, keine Dependenci
 - Jupiter-Anbindung ist nur mit Mocks getestet (keine Netzverbindung beim Entwickeln). Nach dem Deploy prüfen: Statuszeile im Dashboard muss „Swap pricing: Jupiter quotes“ zeigen.
 - Ohne `JUPITER_API_KEY` wird `lite-api.jup.ag` genutzt; falls der abgeschaltet ist, läuft nur das Kostenmodell.
 
-- Render-Free-Dateisystem ist flüchtig: Bei Neustart/Redeploy wird der State (Kapital 100 $, Kerzen, Trades) zurückgesetzt. Lösung wäre externer Speicher (z. B. kostenlose Datenbank).
+- Ohne `DATABASE_URL` ist der State auf Render flüchtig (Reset bei Neustart/Redeploy). Render-Free-Postgres läuft nach ~30 Tagen ab → besser Neon/Supabase.
 - Ist der Dienst trotzdem eingeschlafen/abgestürzt, weckt der Selbst-Ping ihn nicht – dafür externer Pinger (UptimeRobot, cron-job.org) auf `/health`.
 - Ohne offene Positionen ist der Portfoliowert konstant → flache Kerzen (gewollt).
