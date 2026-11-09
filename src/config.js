@@ -4,7 +4,7 @@ export const config = Object.freeze({
   maxTradeUsd: 5,
   takeProfitPercent: 15,
   stopLossPercent: 8,
-  maxOpenPositions: 3,
+  maxOpenPositions: 10,
   maxDailyLossUsd: 5,
   scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 90_000),
   port: Number(process.env.PORT || 10_000),

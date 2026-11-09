@@ -13,6 +13,7 @@ export function openPaperPosition(state, candidate, now = new Date().toISOString
   const amount = Math.min(config.maxTradeUsd, state.cashUsd);
   state.cashUsd -= amount;
   state.positions.push({ token: candidate.token, pairUrl: candidate.pairUrl, entryPriceUsd: candidate.priceUsd, amountUsd: amount, openedAt: now });
+  state.events = [{ at: now, type: "opened", token: candidate.symbol || candidate.token, detail: `Opened $${amount.toFixed(2)} paper position` }, ...(state.events || [])].slice(0, 30);
   return true;
 }
 
@@ -31,6 +32,7 @@ export function closeEligiblePositions(state, prices, now = new Date().toISOStri
     state.cashUsd = Number((state.cashUsd + proceeds).toFixed(4));
     if (pnl < 0) state.dailyLossUsd = Number((state.dailyLossUsd - pnl).toFixed(4));
     state.closedTrades.push({ ...position, exitPriceUsd: price, closedAt: now, pnlUsd: Number(pnl.toFixed(4)), reason: takeProfit ? "take-profit" : "stop-loss" });
+    state.events = [{ at: now, type: takeProfit ? "take-profit" : "stop-loss", token: position.token, detail: `${takeProfit ? "Take profit" : "Stop loss"} · ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}` }, ...(state.events || [])].slice(0, 30);
   }
   state.positions = remaining;
 }
