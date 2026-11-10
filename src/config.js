@@ -5,7 +5,8 @@ export const config = Object.freeze({
   takeProfitPercent: 15,
   stopLossPercent: 8,
   maxOpenPositions: 10,
-  maxDailyLossUsd: 5,
+  // Losses remain visible but do not pause the paper-trading simulation.
+  maxDailyLossUsd: 0,
   scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 60_000),
   priceTickMs: Number(process.env.PRICE_TICK_MS || 3_000),
   // Render free services sleep after ~15 min without inbound traffic.

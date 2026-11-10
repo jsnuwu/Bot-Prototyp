@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { closeEligiblePositions, openPaperPosition, portfolioValue } from "../src/engine.js";
+import { canOpen, closeEligiblePositions, openPaperPosition, portfolioValue } from "../src/engine.js";
 import { simulateBuy, simulateSell } from "../src/costs.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -69,4 +69,9 @@ test("does not immediately re-enter a token after it closes", () => {
   assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 80_000 }, openedAt, noFees), true);
   closeEligiblePositions(state, new Map([["t", 1.15]]), "2026-11-10T10:01:00.000Z", noFees);
   assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 80_000 }, "2026-11-10T10:02:00.000Z", noFees), false);
+});
+
+test("keeps opening paper trades after the displayed daily loss", () => {
+  const state = { ...fresh(), dailyLossUsd: 100 };
+  assert.equal(canOpen(state, noFees), true);
 });

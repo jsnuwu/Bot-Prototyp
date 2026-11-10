@@ -35,7 +35,7 @@ export function canOpen(state, fees = liveFees(state)) {
   const worstCaseLoss = config.maxTradeUsd * (config.stopLossPercent / 100) + roundTripCosts;
   return state.positions.length < config.maxOpenPositions &&
     state.cashUsd >= config.maxTradeUsd + network + fees.tokenAccountRentSol * sol &&
-    state.dailyLossUsd + worstCaseLoss <= config.maxDailyLossUsd;
+    (!config.maxDailyLossUsd || state.dailyLossUsd + worstCaseLoss <= config.maxDailyLossUsd);
 }
 
 // `execution` (optional) is a real Jupiter quote from jupiter.js; without it the cost model in costs.js is used.
