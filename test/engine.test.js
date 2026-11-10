@@ -8,13 +8,17 @@ const noFees = { dexFeePercent: 0, slippagePercent: 0, baseFeeSol: 0, priorityFe
 const fees = { dexFeePercent: 0.25, slippagePercent: 0.5, baseFeeSol: 0.000005, priorityFeeSol: 0.0005, tokenAccountRentSol: 0.002, defaultSolPriceUsd: 150 };
 const fresh = () => ({ cashUsd: 100, positions: [], closedTrades: [], dailyLossUsd: 0, lossDate: today(), solPriceUsd: 100 });
 
-test("without fees: opens $5 and closes at take profit for exactly +15%", () => {
+test("without fees: takes partial profit then exits the remaining position", () => {
   const state = fresh();
   assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 0 }, undefined, noFees), true);
   assert.equal(state.cashUsd, 95);
   closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, noFees);
-  assert.equal(state.closedTrades[0].reason, "take-profit");
-  assert.ok(Math.abs(state.cashUsd - 100.75) < 1e-9);
+  assert.equal(state.closedTrades[0].reason, "take-profit-1");
+  assert.equal(state.positions.length, 1);
+  closeEligiblePositions(state, new Map([["t", 1.35]]), undefined, noFees);
+  assert.equal(state.closedTrades[1].reason, "take-profit-2");
+  assert.equal(state.positions.length, 0);
+  assert.ok(Math.abs(state.cashUsd - 101.25) < 1e-9);
 });
 
 test("with fees: buy and sell costs reduce the net result", () => {
@@ -26,11 +30,12 @@ test("with fees: buy and sell costs reduce the net result", () => {
   // Immediately after buying, the net liquidation value is below 100.
   assert.ok(portfolioValue(state, new Map([["t", 1]]), fees) < 100);
   closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, fees);
-  const trade = state.closedTrades[0];
-  assert.ok(trade.pnlUsd > 0 && trade.pnlUsd < 0.75, `net pnl ${trade.pnlUsd}`);
-  assert.ok(trade.feesUsd > 0.1);
-  // Rent is refunded, so cash = 100 + net pnl.
-  assert.ok(Math.abs(state.cashUsd - (100 + trade.pnlUsd)) < 1e-4);
+  closeEligiblePositions(state, new Map([["t", 1.35]]), undefined, fees);
+  const pnl = state.closedTrades.reduce((total, trade) => total + trade.pnlUsd, 0);
+  assert.ok(pnl > 0 && pnl < 1.25, `net pnl ${pnl}`);
+  assert.ok(state.closedTrades.reduce((total, trade) => total + trade.feesUsd, 0) > 0.1);
+  // Rent is refunded when the final half is sold, so cash = 100 + total net P&L.
+  assert.ok(Math.abs(state.cashUsd - (100 + pnl)) < 1e-4);
   assert.ok(state.feesPaidUsd > 0);
 });
 
@@ -74,4 +79,14 @@ test("does not immediately re-enter a token after it closes", () => {
 test("keeps opening paper trades after the displayed daily loss", () => {
   const state = { ...fresh(), dailyLossUsd: 100 };
   assert.equal(canOpen(state, noFees), true);
+});
+
+test("trailing stop closes the remaining half after TP1", () => {
+  const state = fresh();
+  openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 100_000 }, undefined, noFees);
+  closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, noFees);
+  closeEligiblePositions(state, new Map([["t", 1.25]]), undefined, noFees);
+  closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, noFees);
+  assert.equal(state.closedTrades.at(-1).reason, "trailing-stop");
+  assert.equal(state.positions.length, 0);
 });

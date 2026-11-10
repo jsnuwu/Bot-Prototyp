@@ -68,43 +68,58 @@ export function exitsDue(state, prices) {
   return state.positions.flatMap((position) => {
     const price = prices.get(position.token);
     if (!price || price <= 0) return [];
-    if (price >= position.entryPriceUsd * (1 + config.takeProfitPercent / 100)) return [{ position, price, reason: "take-profit" }];
+    position.peakPriceUsd = Math.max(position.peakPriceUsd || position.entryPriceUsd, price);
     if (price <= position.entryPriceUsd * (1 - config.stopLossPercent / 100)) return [{ position, price, reason: "stop-loss" }];
+    if (position.takeProfitOneTaken && price <= position.peakPriceUsd * (1 - config.trailingStopPercent / 100)) return [{ position, price, reason: "trailing-stop" }];
+    if (position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + config.takeProfitTwoPercent / 100)) return [{ position, price, reason: "take-profit-2" }];
+    if (!position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + config.takeProfitPercent / 100)) return [{ position, price, reason: "take-profit-1", fraction: config.takeProfitFraction }];
     return [];
   });
 }
 
-export function closePosition(state, raw, price, reason, now = new Date().toISOString(), fees = liveFees(state), execution = null) {
+export function closePosition(state, raw, price, reason, now = new Date().toISOString(), fees = liveFees(state), execution = null, fraction = 1) {
   const position = normalise(raw);
+  const sellFraction = Math.max(0, Math.min(1, fraction));
   const sol = solPrice(state);
   const network = networkFeeUsd(sol, fees);
-  const rentUsd = position.rentSol * sol;
+  const finalExit = sellFraction >= 1;
+  const rentUsd = finalExit ? position.rentSol * sol : 0;
+  const soldTokens = position.tokens * sellFraction;
   let cashIn, feeParts;
   if (execution) {
     cashIn = Math.max(0, execution.usdOut - network) + rentUsd;
     feeParts = { ...execution.feesUsd, network };
   } else {
-    const sell = simulateSell({ tokens: position.tokens, priceUsd: price, liquidityUsd: position.liquidityUsd, solPriceUsd: sol, rentSol: position.rentSol }, fees);
+    const sell = simulateSell({ tokens: soldTokens, priceUsd: price, liquidityUsd: position.liquidityUsd, solPriceUsd: sol, rentSol: finalExit ? position.rentSol : 0 }, fees);
     cashIn = sell.cashInUsd;
     feeParts = sell.feesUsd;
   }
   const sellFees = sumFees(feeParts);
-  const pnl = cashIn - rentUsd - position.costUsd;
+  const costUsd = position.costUsd * sellFraction;
+  const pnl = cashIn - rentUsd - costUsd;
   state.cashUsd = Number((state.cashUsd + cashIn).toFixed(6));
   state.feesPaidUsd = (state.feesPaidUsd || 0) + sellFees;
   if (pnl < 0) state.dailyLossUsd = Number((state.dailyLossUsd - pnl).toFixed(4));
-  const totalFees = (position.buyFeesUsd || 0) + sellFees;
-  state.closedTrades.push({ ...raw, exitPriceUsd: price, closedAt: now, pnlUsd: Number(pnl.toFixed(4)), feesUsd: Number(totalFees.toFixed(4)), exitPricing: execution ? "jupiter" : "model", reason });
-  const label = reason === "take-profit" ? "Take profit" : "Stop loss";
+  const totalFees = (position.buyFeesUsd || 0) * sellFraction + sellFees;
+  state.closedTrades.push({ ...raw, amountUsd: Number((position.amountUsd * sellFraction).toFixed(6)), tokens: soldTokens, exitPriceUsd: price, closedAt: now, pnlUsd: Number(pnl.toFixed(4)), feesUsd: Number(totalFees.toFixed(4)), exitPricing: execution ? "jupiter" : "model", reason, partial: !finalExit });
+  const label = reason === "take-profit-1" ? "Take profit 1" : reason === "take-profit-2" ? "Take profit 2" : reason === "trailing-stop" ? "Trailing stop" : "Stop loss";
   const via = execution ? " · via " + (execution.route || "Jupiter") : "";
   state.events = [{ at: now, type: reason, token: position.symbol || position.token, detail: `${label} · net ${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)} · fees $${totalFees.toFixed(3)}${via}` }, ...(state.events || [])].slice(0, 30);
-  state.positions = state.positions.filter((p) => p !== raw);
+  if (finalExit) state.positions = state.positions.filter((p) => p !== raw);
+  else {
+    raw.amountUsd = position.amountUsd * (1 - sellFraction);
+    raw.costUsd = position.costUsd * (1 - sellFraction);
+    raw.buyFeesUsd = (position.buyFeesUsd || 0) * (1 - sellFraction);
+    raw.tokens = position.tokens * (1 - sellFraction);
+    if (raw.rawTokens) raw.rawTokens = (BigInt(raw.rawTokens) * BigInt(Math.round((1 - sellFraction) * 10_000)) / 10_000n).toString();
+    raw.takeProfitOneTaken = true;
+  }
 }
 
 // Synchronous variant using the cost model only.
 export function closeEligiblePositions(state, prices, now = new Date().toISOString(), fees = liveFees(state)) {
   resetDailyLossIfNeeded(state);
-  for (const exit of exitsDue(state, prices)) closePosition(state, exit.position, exit.price, exit.reason, now, fees);
+  for (const exit of exitsDue(state, prices)) closePosition(state, exit.position, exit.price, exit.reason, now, fees, null, exit.fraction);
 }
 
 // Net liquidation value: cash plus what every position would return if sold now.

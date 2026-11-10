@@ -3,7 +3,10 @@ export const config = Object.freeze({
   startingCapitalUsd: 100,
   maxTradeUsd: 5,
   takeProfitPercent: 15,
+  takeProfitTwoPercent: 35,
+  takeProfitFraction: 0.5,
   stopLossPercent: 8,
+  trailingStopPercent: 8,
   maxOpenPositions: 10,
   // Losses remain visible but do not pause the paper-trading simulation.
   maxDailyLossUsd: 0,

@@ -79,8 +79,8 @@ async function refreshPrices() {
     position.liquidityUsd = quote.liquidityUsd;
   }
   resetDailyLossIfNeeded(state);
-  for (const { position, price, reason } of exitsDue(state, latestPrices)) {
-    closePosition(state, position, price, reason, undefined, undefined, await sellQuote(position, price));
+  for (const { position, price, reason, fraction = 1 } of exitsDue(state, latestPrices)) {
+    closePosition(state, position, price, reason, undefined, undefined, await sellQuote(position, price, fraction), fraction);
     await persist();
   }
 }
@@ -92,9 +92,10 @@ async function buyQuote(pick) {
   catch (error) { jupiterError = error.message; return null; }
 }
 
-async function sellQuote(position, price) {
+async function sellQuote(position, price, fraction = 1) {
   if (!config.jupiter.enabled || !position.rawTokens) return null;
-  try { const q = await quoteSell({ mint: position.token, rawTokens: position.rawTokens, tokens: position.tokens, priceUsd: price }); jupiterError = null; return q; }
+  const scaledRaw = (BigInt(position.rawTokens) * BigInt(Math.round(fraction * 10_000)) / 10_000n).toString();
+  try { const q = await quoteSell({ mint: position.token, rawTokens: scaledRaw, tokens: position.tokens * fraction, priceUsd: price }); jupiterError = null; return q; }
   catch (error) { jupiterError = error.message; return null; }
 }
 
