@@ -1,5 +1,7 @@
 export const CANDLE_MS = 15_000;
-export const MAX_CANDLES = 240;
+// 24 hours of 15-second candles. This is intentionally bounded so the
+// persistent state stays predictable while still providing useful context.
+export const MAX_CANDLES = 5_760;
 
 // Aggregates a value sample into OHLC candles of fixed length.
 // A new candle opens at the previous close, like a regular trading chart.

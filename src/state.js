@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 
 export function freshState() {
-  return { cashUsd: 100, positions: [], closedTrades: [], events: [], history: [], candles: [], dailyLossUsd: 0, feesPaidUsd: 0, solPriceUsd: null, lossDate: new Date().toISOString().slice(0, 10), lastScanAt: null, startedAt: new Date().toISOString() };
+  return { cashUsd: 100, positions: [], closedTrades: [], events: [], history: [], candles: [], marketCandles: [], dailyLossUsd: 0, feesPaidUsd: 0, solPriceUsd: null, lossDate: new Date().toISOString().slice(0, 10), lastScanAt: null, startedAt: new Date().toISOString() };
 }
 
 // Storage backend: Postgres when DATABASE_URL is set (survives restarts and redeploys), otherwise a local JSON file.
