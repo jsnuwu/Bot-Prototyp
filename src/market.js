@@ -1,13 +1,62 @@
 const API = "https://api.dexscreener.com";
 
+// Share one rate limiter and cache across price ticks and discovery scans.
+const MIN_REQUEST_GAP_MS = 1_500;
+const CACHE_TTL_MS = 15_000;
+const MAX_BACKOFF_MS = 120_000;
+const cache = new Map();
+let nextRequestAt = 0;
+let requestQueue = Promise.resolve();
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function retryDelay(header, attempt) {
+  const seconds = Number(header);
+  const retryAfterMs = Number.isFinite(seconds) && seconds > 0
+    ? seconds * 1_000
+    : header && Number.isFinite(Date.parse(header))
+      ? Date.parse(header) - Date.now()
+      : 0;
+  return Math.min(MAX_BACKOFF_MS, Math.max(retryAfterMs, 5_000 * 2 ** attempt));
+}
+
 async function request(path) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await fetch(`${API}${path}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
-    if (response.ok) return response.json();
-    if (response.status !== 429 || attempt === 2) throw new Error(`DexScreener responded with ${response.status}`);
-    const retryAfterSeconds = Number(response.headers.get("retry-after") || 2);
-    await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(retryAfterSeconds, 1), 10) * 1_000));
-  }
+  const cached = cache.get(path);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+
+  // Serialize all DexScreener calls, including retries, so a second caller
+  // cannot bypass a rate-limit cooldown.
+  const task = requestQueue.catch(() => {}).then(async () => {
+    const recent = cache.get(path);
+    if (recent && Date.now() - recent.at < CACHE_TTL_MS) return recent.data;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await sleep(Math.max(0, nextRequestAt - Date.now()));
+      nextRequestAt = Date.now() + MIN_REQUEST_GAP_MS;
+      const response = await fetch(`${API}${path}`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        cache.set(path, { at: Date.now(), data });
+        // Bound memory usage as token batches change over time.
+        if (cache.size > 100) {
+          for (const [key, entry] of cache) {
+            if (Date.now() - entry.at > CACHE_TTL_MS) cache.delete(key);
+          }
+          while (cache.size > 100) cache.delete(cache.keys().next().value);
+        }
+        return data;
+      }
+      if (response.status !== 429 || attempt === 2) {
+        throw new Error(`DexScreener responded with ${response.status}`);
+      }
+      nextRequestAt = Math.max(nextRequestAt, Date.now() + retryDelay(response.headers.get("retry-after"), attempt));
+    }
+  });
+  requestQueue = task.catch(() => {});
+  return task;
 }
 
 export async function discoverCandidates() {
