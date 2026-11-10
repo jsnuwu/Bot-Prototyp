@@ -13,7 +13,7 @@ function mockFetch(outAmount, calls = []) {
   };
 }
 
-test("buy quote: sends api key, infers decimals and prices the swap cost", async () => {
+test("buy quote: sends api key, infers decimals and uses the quoted output", async () => {
   const calls = [];
   // $5 at $0.001/token with 6 decimals = 5000 tokens = 5_000_000_000 raw; quote returns 2 % less.
   const q = await quoteBuy({ mint: "MINT", amountUsd: 5, priceUsd: 0.001 }, jup, mockFetch(4_900_000_000, calls));
@@ -22,12 +22,14 @@ test("buy quote: sends api key, infers decimals and prices the swap cost", async
   assert.equal(q.decimals, 6);
   assert.equal(q.route, "Raydium");
   assert.ok(Math.abs(q.feesUsd.swap - 0.1) < 1e-9);
-  assert.ok(q.tokens < 4900 && q.tokens > 4870);
+  assert.equal(q.tokens, 4900);
+  assert.equal(q.feesUsd.slippage, 0);
 });
 
-test("sell quote: converts USDC output and applies latency slippage", async () => {
+test("sell quote: converts the quoted USDC output", async () => {
   const q = await quoteSell({ mint: "MINT", rawTokens: "4875500000", tokens: 4875.5, priceUsd: 0.00115 }, jup, mockFetch(5_500_000));
-  assert.ok(Math.abs(q.usdOut - 5.5 * 0.995) < 1e-9);
+  assert.equal(q.usdOut, 5.5);
+  assert.equal(q.feesUsd.slippage, 0);
   assert.ok(q.feesUsd.swap > 0);
 });
 
@@ -51,3 +53,4 @@ test("engine books Jupiter-priced trades with net P&L", async () => {
   assert.ok(Math.abs(state.cashUsd - (100 + trade.pnlUsd)) < 1e-4);
   assert.equal(USDC_MINT.length, 44);
 });
+
