@@ -6,7 +6,7 @@ export const config = Object.freeze({
   stopLossPercent: 8,
   maxOpenPositions: 10,
   maxDailyLossUsd: 5,
-  scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 90_000),
+  scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 60_000),
   priceTickMs: Number(process.env.PRICE_TICK_MS || 3_000),
   // Render free services sleep after ~15 min without inbound traffic.
   keepAliveUrl: process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL || "",
@@ -28,6 +28,11 @@ export const config = Object.freeze({
   }),
   rpcUrl: process.env.SOLANA_RPC_URL || "",
   priorityFeeRefreshMs: 60_000,
+  // Reject routes whose entry friction would consume too much of a $5 trade.
+  maxEntryFeeUsd: Number(process.env.MAX_ENTRY_FEE_USD || 0.20),
+  maxQuotePriceImpactPct: Number(process.env.MAX_QUOTE_PRICE_IMPACT_PCT || 2),
+  // Avoid repeatedly buying the same boosted token after an exit.
+  reentryCooldownMs: Number(process.env.REENTRY_COOLDOWN_MS || 30 * 60_000),
   port: Number(process.env.PORT || 10_000),
   databaseUrl: process.env.DATABASE_URL || "",
   stateFile: process.env.STATE_FILE || "data/state.json"

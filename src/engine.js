@@ -7,6 +7,17 @@ const solPrice = (state) => state.solPriceUsd || config.fees.defaultSolPriceUsd;
 // Uses the live priority fee from the Solana RPC once it is known.
 const liveFees = (state) => (Number.isFinite(state.priorityFeeSol) ? { ...config.fees, priorityFeeSol: state.priorityFeeSol } : config.fees);
 
+function isCoolingDown(state, token, now) {
+  const closedAt = (state.closedTrades || []).findLast((trade) => trade.token === token)?.closedAt;
+  return Boolean(closedAt) && Date.parse(now) - Date.parse(closedAt) < config.reentryCooldownMs;
+}
+
+function hasAcceptableExecution(execution, network) {
+  if (!execution) return true;
+  const entryFees = sumFees({ ...execution.feesUsd, network });
+  return execution.priceImpactPct <= config.maxQuotePriceImpactPct && entryFees <= config.maxEntryFeeUsd;
+}
+
 // Positions opened before fees were modelled have no token amount stored.
 function normalise(position) {
   return {
@@ -29,10 +40,10 @@ export function canOpen(state, fees = liveFees(state)) {
 
 // `execution` (optional) is a real Jupiter quote from jupiter.js; without it the cost model in costs.js is used.
 export function openPaperPosition(state, candidate, now = new Date().toISOString(), fees = liveFees(state), execution = null) {
-  if (!canOpen(state, fees) || !(candidate.priceUsd > 0)) return false;
+  const network = networkFeeUsd(solPrice(state), fees);
+  if (!canOpen(state, fees) || !(candidate.priceUsd > 0) || isCoolingDown(state, candidate.token, now) || !hasAcceptableExecution(execution, network)) return false;
   const amount = config.maxTradeUsd;
   const sol = solPrice(state);
-  const network = networkFeeUsd(sol, fees);
   const model = execution ? null : simulateBuy({ amountUsd: amount, priceUsd: candidate.priceUsd, liquidityUsd: candidate.liquidityUsd, solPriceUsd: sol }, fees);
   const tokens = execution ? execution.tokens : model.tokens;
   const feeParts = execution ? { ...execution.feesUsd, network } : model.feesUsd;

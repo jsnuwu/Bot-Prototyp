@@ -55,3 +55,18 @@ test("legacy positions without token amount still close", () => {
   closeEligiblePositions(state, new Map([["t", 0.92]]), undefined, noFees);
   assert.equal(state.dailyLossUsd, 0.4);
 });
+
+test("rejects expensive Jupiter entries before they create a position", () => {
+  const state = fresh();
+  const execution = { tokens: 4, feesUsd: { swap: 0.3, slippage: 0.02 }, priceImpactPct: 1 };
+  assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 80_000 }, undefined, fees, execution), false);
+  assert.equal(state.positions.length, 0);
+});
+
+test("does not immediately re-enter a token after it closes", () => {
+  const state = fresh();
+  const openedAt = "2026-11-10T10:00:00.000Z";
+  assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 80_000 }, openedAt, noFees), true);
+  closeEligiblePositions(state, new Map([["t", 1.15]]), "2026-11-10T10:01:00.000Z", noFees);
+  assert.equal(openPaperPosition(state, { token: "t", priceUsd: 1, liquidityUsd: 80_000 }, "2026-11-10T10:02:00.000Z", noFees), false);
+});
