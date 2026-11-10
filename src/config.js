@@ -7,7 +7,7 @@ export const config = Object.freeze({
   takeProfitFraction: 0.5,
   stopLossPercent: 8,
   trailingStopPercent: 8,
-  maxOpenPositions: 10,
+  maxOpenPositions: 15,
   // Losses remain visible but do not pause the paper-trading simulation.
   maxDailyLossUsd: 0,
   scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 60_000),
