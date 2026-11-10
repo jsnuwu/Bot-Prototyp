@@ -12,12 +12,14 @@ async function request(path) {
 
 export async function discoverCandidates() {
   const boosts = await request("/token-boosts/latest/v1");
-  const solana = boosts.filter((item) => item.chainId === "solana").slice(0, 5);
+  const solana = boosts.filter((item) => item.chainId === "solana").slice(0, 20);
+  const addresses = solana.map((item) => item.tokenAddress);
+  const pairs = addresses.length ? await request(`/tokens/v1/solana/${addresses.join(",")}`) : [];
   const candidates = [];
-  for (const item of solana) {
-    const result = await request(`/latest/dex/tokens/${item.tokenAddress}`);
-    const pair = (result.pairs || []).find((p) => p.chainId === "solana" && Number(p.priceUsd) > 0 && (p.liquidity?.usd || 0) >= 25_000 && (p.volume?.h24 || 0) >= 10_000);
-    if (!pair) continue;
+  const seen = new Set();
+  for (const pair of Array.isArray(pairs) ? pairs : []) {
+    if (pair.chainId !== "solana" || seen.has(pair.baseToken?.address) || !(Number(pair.priceUsd) > 0) || (pair.liquidity?.usd || 0) < 25_000 || (pair.volume?.h24 || 0) < 10_000) continue;
+    seen.add(pair.baseToken.address);
     candidates.push({ token: pair.baseToken.address, symbol: pair.baseToken.symbol, priceUsd: Number(pair.priceUsd), liquidityUsd: pair.liquidity?.usd || 0, pairUrl: pair.url, score: (pair.volume?.h24 || 0) / Math.max(pair.liquidity?.usd || 1, 1) });
   }
   return candidates.sort((a, b) => b.score - a.score);
