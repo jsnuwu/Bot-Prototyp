@@ -1,4 +1,3 @@
-
 import http from "node:http";
 import { assertPaperOnly, config } from "./config.js";
 import { addSample, CANDLE_MS } from "./candles.js";
@@ -8,6 +7,7 @@ import { quoteBuy, quoteSell } from "./jupiter.js";
 import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
 import { currentQuotes, discoverCandidates } from "./market.js";
+import { advanceResearch, ensureResearch, researchSummary } from "./research.js";
 import { createStore, resetDailyLossIfNeeded } from "./state.js";
 import { startHeartbeat } from "./heartbeat.js";
 import { computeStats, tradesCsv } from "./stats.js";
@@ -16,6 +16,7 @@ assertPaperOnly();
 if (process.env.RENDER === "true" && !config.databaseUrl) throw new Error("DATABASE_URL is required on Render");
 const store = await createStore({ databaseUrl: config.databaseUrl, stateFile: config.stateFile });
 let state = await store.load();
+ensureResearch(state);
 console.log(`State storage: ${store.kind}`);
 
 let pendingSave = Promise.resolve();
@@ -70,7 +71,8 @@ function recordCandle() {
 }
 
 async function refreshPrices() {
-  const quotes = await currentQuotes([SOL_MINT, ...state.positions.map((p) => p.token)]);
+  const researchTokens = (state.research?.strategies || []).flatMap((strategy) => strategy.positions.map((position) => position.token));
+  const quotes = await currentQuotes([SOL_MINT, ...state.positions.map((p) => p.token), ...researchTokens]);
   const sol = quotes.get(SOL_MINT);
   if (sol) state.solPriceUsd = sol.priceUsd;
   for (const position of state.positions) {
@@ -79,14 +81,17 @@ async function refreshPrices() {
     latestPrices.set(position.token, quote.priceUsd);
     position.liquidityUsd = quote.liquidityUsd;
   }
+  advanceResearch(state, quotes);
   resetDailyLossIfNeeded(state);
   for (const { position, price, reason, fraction = 1 } of exitsDue(state, latestPrices)) {
-    closePosition(state, position, price, reason, undefined, undefined, await sellQuote(position, price, fraction), fraction);
+    const execution = await sellQuote(position, price, fraction);
+    if (!execution && position.rawTokens) continue;
+    closePosition(state, position, price, reason, undefined, undefined, execution, fraction);
     await persist();
   }
 }
 
-// Real Jupiter quote when possible, otherwise null (the cost model is used instead).
+// New paper executions require a current Jupiter quote; unavailable routes are skipped.
 async function buyQuote(pick) {
   if (!config.jupiter.enabled) return null;
   try { const q = await quoteBuy({ mint: pick.token, amountUsd: config.maxTradeUsd, priceUsd: pick.priceUsd }); jupiterError = null; return q; }
@@ -117,12 +122,14 @@ async function cycle() {
   try {
     resetDailyLossIfNeeded(state);
     await refreshPrices();
+    const candidates = await discoverCandidates();
+    advanceResearch(state, new Map(candidates.map((candidate) => [candidate.token, candidate])), candidates);
     if (canOpen(state)) {
-      const candidates = await discoverCandidates();
       const held = new Set(state.positions.map((p) => p.token));
       for (const pick of candidates) {
         if (!canOpen(state)) break;
-        if (!held.has(pick.token) && openPaperPosition(state, pick, undefined, undefined, await buyQuote(pick))) {
+        const execution = held.has(pick.token) ? null : await buyQuote(pick);
+        if (execution && openPaperPosition(state, pick, undefined, undefined, execution)) {
           held.add(pick.token);
           latestPrices.set(pick.token, pick.priceUsd);
           await persist();
@@ -142,7 +149,7 @@ async function cycle() {
 
 function status() {
   const portfolioUsd = portfolioValue(state, latestPrices);
-  return { mode: "paper", storage: store.kind, saveError, keepAlive: heartbeat.status, lastSavedAt: state.lastSavedAt || null, stats: computeStats(state, portfolioUsd, config.startingCapitalUsd), healthy: !saveError, serverTime: new Date().toISOString(), startingCapitalUsd: config.startingCapitalUsd, cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioUsd.toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number((state.slippagePaidUsd || 0).toFixed(4)), dailyLossLimitUsd: null, feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-20).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles, marketCandles: state.marketCandles || [] };
+  return { mode: "paper", storage: store.kind, saveError, keepAlive: heartbeat.status, lastSavedAt: state.lastSavedAt || null, stats: computeStats(state, portfolioUsd, config.startingCapitalUsd), research: { startedAt: state.research?.startedAt || null, strategies: researchSummary(state.research) }, healthy: !saveError, serverTime: new Date().toISOString(), startingCapitalUsd: config.startingCapitalUsd, cashUsd: Number(state.cashUsd.toFixed(2)), portfolioUsd: Number(portfolioUsd.toFixed(2)), openPositions: state.positions.length, maxOpenPositions: config.maxOpenPositions, dailyLossUsd: Number((state.slippagePaidUsd || 0).toFixed(4)), dailyLossLimitUsd: null, feesPaidUsd: Number((state.feesPaidUsd || 0).toFixed(2)), realizedPnlUsd: Number(state.closedTrades.reduce((t, c) => t + c.pnlUsd, 0).toFixed(2)), solPriceUsd: state.solPriceUsd || null, jupiter: { enabled: config.jupiter.enabled, authenticated: Boolean(config.jupiter.apiKey), lastError: jupiterError }, priorityFeeSol: Number.isFinite(state.priorityFeeSol) ? state.priorityFeeSol : null, priorityFeeSource: config.rpcUrl && !rpcError && Number.isFinite(state.priorityFeeSol) ? "rpc" : "default", lastScanAt: state.lastScanAt, lastTickAt, lastError, positions: state.positions, closedTrades: state.closedTrades.slice(-20).reverse(), events: (state.events || []).slice(0, 8), history: state.history || [], candleMs: CANDLE_MS, candles: state.candles, marketCandles: state.marketCandles || [] };
 }
 
 const heartbeat = startHeartbeat(config.keepAliveUrl, config.keepAliveMs);
