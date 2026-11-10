@@ -1,3 +1,4 @@
+
 import { config } from "./config.js";
 import { networkFeeUsd, simulateBuy, simulateSell, sumFees } from "./costs.js";
 import { resetDailyLossIfNeeded } from "./state.js";
@@ -50,6 +51,7 @@ export function openPaperPosition(state, candidate, now = new Date().toISOString
   const feesUsd = sumFees(feeParts);
   state.cashUsd -= amount + network + fees.tokenAccountRentSol * sol;
   state.feesPaidUsd = (state.feesPaidUsd || 0) + feesUsd;
+  state.slippagePaidUsd = (state.slippagePaidUsd || 0) + (feeParts.slippage || 0);
   state.positions.push({
     token: candidate.token, symbol: candidate.symbol, pairUrl: candidate.pairUrl,
     entryPriceUsd: candidate.priceUsd, fillPriceUsd: amount / tokens, amountUsd: amount,
@@ -99,6 +101,7 @@ export function closePosition(state, raw, price, reason, now = new Date().toISOS
   const pnl = cashIn - rentUsd - costUsd;
   state.cashUsd = Number((state.cashUsd + cashIn).toFixed(6));
   state.feesPaidUsd = (state.feesPaidUsd || 0) + sellFees;
+  state.slippagePaidUsd = (state.slippagePaidUsd || 0) + (feeParts.slippage || 0);
   if (pnl < 0) state.dailyLossUsd = Number((state.dailyLossUsd - pnl).toFixed(4));
   const totalFees = (position.buyFeesUsd || 0) * sellFraction + sellFees;
   state.closedTrades.push({ ...raw, amountUsd: Number((position.amountUsd * sellFraction).toFixed(6)), tokens: soldTokens, exitPriceUsd: price, closedAt: now, pnlUsd: Number(pnl.toFixed(4)), feesUsd: Number(totalFees.toFixed(4)), exitPricing: execution ? "jupiter" : "model", reason, partial: !finalExit });
@@ -130,3 +133,4 @@ export function portfolioValue(state, prices = new Map(), fees = liveFees(state)
     return total + simulateSell({ tokens: p.tokens, priceUsd: price, liquidityUsd: p.liquidityUsd, solPriceUsd: solPrice(state), rentSol: p.rentSol }, fees).cashInUsd;
   }, 0);
 }
+
