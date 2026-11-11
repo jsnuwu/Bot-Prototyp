@@ -36,7 +36,8 @@ function updateLossStreakPause(state, now) {
 export function executionConfirmsExit(position, execution, reason) {
   if (!execution?.quotePriceUsd || !position.fillPriceUsd) return true;
   const quoteMovePct = (execution.quotePriceUsd / position.fillPriceUsd - 1) * 100;
-  if (reason.startsWith("take-profit")) return quoteMovePct >= config.takeProfitPercent;
+  if (reason === "take-profit-2") return quoteMovePct >= config.takeProfitTwoPercent;
+  if (reason === "take-profit-1") return quoteMovePct >= config.takeProfitPercent;
   if (reason === "stop-loss") return quoteMovePct <= -config.stopLossPercent;
   if (reason === "trailing-stop") return quoteMovePct <= (position.peakPriceUsd / position.fillPriceUsd - 1 - config.trailingStopPercent);
   return true;
