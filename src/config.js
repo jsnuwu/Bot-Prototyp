@@ -10,7 +10,8 @@ export const config = Object.freeze({
   maxOpenPositions: 15,
   // Losses remain visible but do not pause the paper-trading simulation.
   maxDailyLossUsd: 0,
-  scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 60_000),
+  // Fast enough to catch a fresh boost, while staying below public data API limits.
+  scanIntervalMs: Number(process.env.SCAN_INTERVAL_MS || 20_000),
   priceTickMs: Number(process.env.PRICE_TICK_MS || 3_000),
   // Render free services sleep after ~15 min without inbound traffic.
   keepAliveUrl: process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL || "",
@@ -36,12 +37,12 @@ export const config = Object.freeze({
   maxEntryFeeUsd: Number(process.env.MAX_ENTRY_FEE_USD || 0.20),
   maxQuotePriceImpactPct: Number(process.env.MAX_QUOTE_PRICE_IMPACT_PCT || 2),
   momentum: Object.freeze({
-    minLiquidityUsd: Number(process.env.MOMENTUM_MIN_LIQUIDITY_USD || 35_000),
-    minVolumeM5Usd: Number(process.env.MOMENTUM_MIN_VOLUME_M5_USD || 1_500),
-    minPriceChangeM5Percent: Number(process.env.MOMENTUM_MIN_PRICE_CHANGE_M5_PERCENT || 2),
-    maxPriceChangeM5Percent: Number(process.env.MOMENTUM_MAX_PRICE_CHANGE_M5_PERCENT || 45),
-    confirmationGainPercent: Number(process.env.MOMENTUM_CONFIRMATION_GAIN_PERCENT || 0.3),
-    confirmationWindowMs: Number(process.env.MOMENTUM_CONFIRMATION_WINDOW_MS || 5 * 60_000),
+    minLiquidityUsd: Number(process.env.MOMENTUM_MIN_LIQUIDITY_USD || 25_000),
+    minVolumeM5Usd: Number(process.env.MOMENTUM_MIN_VOLUME_M5_USD || 500),
+    minPriceChangeM5Percent: Number(process.env.MOMENTUM_MIN_PRICE_CHANGE_M5_PERCENT || 1),
+    maxPriceChangeM5Percent: Number(process.env.MOMENTUM_MAX_PRICE_CHANGE_M5_PERCENT || 35),
+    confirmationGainPercent: Number(process.env.MOMENTUM_CONFIRMATION_GAIN_PERCENT || 0.15),
+    confirmationWindowMs: Number(process.env.MOMENTUM_CONFIRMATION_WINDOW_MS || 90_000),
     takeProfitPercent: Number(process.env.MOMENTUM_TAKE_PROFIT_PERCENT || 10),
     takeProfitTwoPercent: Number(process.env.MOMENTUM_TAKE_PROFIT_TWO_PERCENT || 22),
     trailingStopPercent: Number(process.env.MOMENTUM_TRAILING_STOP_PERCENT || 5),
