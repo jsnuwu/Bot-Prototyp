@@ -19,6 +19,29 @@ function hasAcceptableExecution(execution, network) {
   return execution.priceImpactPct <= config.maxQuotePriceImpactPct && entryFees <= config.maxEntryFeeUsd;
 }
 
+function isEntryPaused(state, now) {
+  return Date.parse(state.entryPausedUntil || 0) > Date.parse(now);
+}
+
+function updateLossStreakPause(state, now) {
+  const since = Date.parse(now) - config.lossStreakWindowMs;
+  const recentStops = (state.closedTrades || []).filter((trade) =>
+    trade.reason === "stop-loss" && trade.pnlUsd < 0 && Date.parse(trade.closedAt) >= since
+  );
+  if (recentStops.length >= config.lossStreakLimit) {
+    state.entryPausedUntil = new Date(Date.parse(now) + config.lossStreakPauseMs).toISOString();
+  }
+}
+
+export function executionConfirmsExit(position, execution, reason) {
+  if (!execution?.quotePriceUsd || !position.fillPriceUsd) return true;
+  const quoteMovePct = (execution.quotePriceUsd / position.fillPriceUsd - 1) * 100;
+  if (reason.startsWith("take-profit")) return quoteMovePct >= config.takeProfitPercent;
+  if (reason === "stop-loss") return quoteMovePct <= -config.stopLossPercent;
+  if (reason === "trailing-stop") return quoteMovePct <= (position.peakPriceUsd / position.fillPriceUsd - 1 - config.trailingStopPercent);
+  return true;
+}
+
 // Positions opened before fees were modelled have no token amount stored.
 function normalise(position) {
   return {
@@ -35,6 +58,7 @@ export function canOpen(state, fees = liveFees(state)) {
   const roundTripCosts = 2 * network + config.maxTradeUsd * 2 * (fees.dexFeePercent + fees.slippagePercent) / 100;
   const worstCaseLoss = config.maxTradeUsd * (config.stopLossPercent / 100) + roundTripCosts;
   return state.positions.length < config.maxOpenPositions &&
+    !isEntryPaused(state, new Date().toISOString()) &&
     state.cashUsd >= config.maxTradeUsd + network + fees.tokenAccountRentSol * sol &&
     (!config.maxDailyLossUsd || state.dailyLossUsd + worstCaseLoss <= config.maxDailyLossUsd);
 }
@@ -117,6 +141,7 @@ export function closePosition(state, raw, price, reason, now = new Date().toISOS
     if (raw.rawTokens) raw.rawTokens = (BigInt(raw.rawTokens) * BigInt(Math.round((1 - sellFraction) * 10_000)) / 10_000n).toString();
     raw.takeProfitOneTaken = true;
   }
+  if (finalExit) updateLossStreakPause(state, now);
 }
 
 // Synchronous variant using the cost model only.

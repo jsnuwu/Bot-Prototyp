@@ -21,7 +21,7 @@ test("buy quote: sends api key, infers decimals and uses the quoted output", asy
   assert.equal(calls[0].headers["x-api-key"], "test-key");
   assert.equal(q.decimals, 6);
   assert.equal(q.route, "Raydium");
-  assert.ok(Math.abs(q.feesUsd.swap - 0.1) < 1e-9);
+  assert.equal(q.feesUsd.swap, 0);
   assert.equal(q.tokens, 4900);
   assert.equal(q.feesUsd.slippage, 0);
 });
@@ -30,7 +30,8 @@ test("sell quote: converts the quoted USDC output", async () => {
   const q = await quoteSell({ mint: "MINT", rawTokens: "4875500000", tokens: 4875.5, priceUsd: 0.00115 }, jup, mockFetch(5_500_000));
   assert.equal(q.usdOut, 5.5);
   assert.equal(q.feesUsd.slippage, 0);
-  assert.ok(q.feesUsd.swap > 0);
+  assert.equal(q.feesUsd.swap, 0);
+  assert.ok(q.quoteReferenceDeviationPct < 0);
 });
 
 test("rejects quotes that do not match the market price", async () => {

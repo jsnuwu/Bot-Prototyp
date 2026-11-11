@@ -35,6 +35,9 @@ export const config = Object.freeze({
   // Reject routes whose entry friction would consume too much of a $5 trade.
   maxEntryFeeUsd: Number(process.env.MAX_ENTRY_FEE_USD || 0.20),
   maxQuotePriceImpactPct: Number(process.env.MAX_QUOTE_PRICE_IMPACT_PCT || 2),
+  lossStreakLimit: Number(process.env.LOSS_STREAK_LIMIT || 3),
+  lossStreakWindowMs: Number(process.env.LOSS_STREAK_WINDOW_MS || 30 * 60_000),
+  lossStreakPauseMs: Number(process.env.LOSS_STREAK_PAUSE_MS || 30 * 60_000),
   // Avoid repeatedly buying the same boosted token after an exit.
   reentryCooldownMs: Number(process.env.REENTRY_COOLDOWN_MS || 30 * 60_000),
   port: Number(process.env.PORT || 10_000),

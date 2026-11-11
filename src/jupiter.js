@@ -27,8 +27,7 @@ export async function quoteBuy({ mint, amountUsd, priceUsd }, jup, fetchImpl) {
   const quotedRaw = Number(quote.outAmount);
   const decimals = Math.round(Math.log10((quotedRaw * priceUsd) / amountUsd));
   if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) throw new Error("Jupiter quote does not match market price");
-  const latency = config.fees.slippagePercent / 100;
-  const rawTokens = Math.floor(quotedRaw * (1 - latency));
+  const rawTokens = quotedRaw;
   const quotedValueUsd = (quotedRaw / 10 ** decimals) * priceUsd;
   return {
     source: "jupiter",
@@ -37,19 +36,23 @@ export async function quoteBuy({ mint, amountUsd, priceUsd }, jup, fetchImpl) {
     rawTokens: String(rawTokens),
     decimals,
     tokens: rawTokens / 10 ** decimals,
-    feesUsd: { swap: Math.max(0, amountUsd - quotedValueUsd), slippage: quotedValueUsd * latency }
+    // Quote-vs-chart differences are execution deltas, not on-chain fees.
+    quoteReferenceDeviationPct: amountUsd ? Number((((quotedValueUsd - amountUsd) / amountUsd) * 100).toFixed(4)) : 0,
+    feesUsd: { swap: 0, slippage: 0 }
   };
 }
 
 export async function quoteSell({ mint, rawTokens, tokens, priceUsd }, jup, fetchImpl) {
   const quote = await getQuote({ inputMint: mint, outputMint: USDC_MINT, amount: rawTokens }, jup, fetchImpl);
   const quotedUsd = Number(quote.outAmount) / 10 ** USDC_DECIMALS;
-  const latency = config.fees.slippagePercent / 100;
+  const referenceUsd = tokens * priceUsd;
   return {
     source: "jupiter",
     route: route(quote),
     priceImpactPct: Number(quote.priceImpactPct || 0) * 100,
-    usdOut: quotedUsd * (1 - latency),
-    feesUsd: { swap: Math.max(0, tokens * priceUsd - quotedUsd), slippage: quotedUsd * latency }
+    usdOut: quotedUsd,
+    quotePriceUsd: tokens > 0 ? quotedUsd / tokens : 0,
+    quoteReferenceDeviationPct: referenceUsd > 0 ? Number((((quotedUsd - referenceUsd) / referenceUsd) * 100).toFixed(4)) : 0,
+    feesUsd: { swap: 0, slippage: 0 }
   };
 }

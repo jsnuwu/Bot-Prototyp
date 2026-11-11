@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canOpen, closeEligiblePositions, openPaperPosition, portfolioValue } from "../src/engine.js";
+import { canOpen, closeEligiblePositions, executionConfirmsExit, openPaperPosition, portfolioValue } from "../src/engine.js";
 import { simulateBuy, simulateSell } from "../src/costs.js";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -89,4 +89,10 @@ test("trailing stop closes the remaining half after TP1", () => {
   closeEligiblePositions(state, new Map([["t", 1.15]]), undefined, noFees);
   assert.equal(state.closedTrades.at(-1).reason, "trailing-stop");
   assert.equal(state.positions.length, 0);
+});
+
+test("does not take profit when an executable quote contradicts the chart price", () => {
+  const position = { fillPriceUsd: 1, peakPriceUsd: 1.5 };
+  assert.equal(executionConfirmsExit(position, { quotePriceUsd: 1.02 }, "take-profit-1"), false);
+  assert.equal(executionConfirmsExit(position, { quotePriceUsd: 1.16 }, "take-profit-1"), true);
 });

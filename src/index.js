@@ -2,7 +2,7 @@ import http from "node:http";
 import { assertPaperOnly, config } from "./config.js";
 import { addSample, CANDLE_MS } from "./candles.js";
 import { dashboardHtml } from "./dashboard.js";
-import { canOpen, closePosition, exitsDue, openPaperPosition, portfolioValue } from "./engine.js";
+import { canOpen, closePosition, executionConfirmsExit, exitsDue, openPaperPosition, portfolioValue } from "./engine.js";
 import { quoteBuy, quoteSell } from "./jupiter.js";
 import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
@@ -86,7 +86,11 @@ async function refreshPrices() {
   for (const { position, price, reason, fraction = 1 } of exitsDue(state, latestPrices)) {
     const execution = await sellQuote(position, price, fraction);
     if (!execution && position.rawTokens) continue;
-    closePosition(state, position, price, reason, undefined, undefined, execution, fraction);
+    if (execution && !executionConfirmsExit(position, execution, reason)) {
+      state.events = [{ at: new Date().toISOString(), type: "quote-mismatch", token: position.symbol || position.token, detail: `Skipped ${reason}: chart price did not match executable quote` }, ...(state.events || [])].slice(0, 30);
+      continue;
+    }
+    closePosition(state, position, execution?.quotePriceUsd || price, reason, undefined, undefined, execution, fraction);
     await persist();
   }
 }
