@@ -69,9 +69,25 @@ export async function discoverCandidates() {
   for (const pair of Array.isArray(pairs) ? pairs : []) {
     if (pair.chainId !== "solana" || seen.has(pair.baseToken?.address) || !(Number(pair.priceUsd) > 0) || (pair.liquidity?.usd || 0) < 25_000 || (pair.volume?.h24 || 0) < 10_000) continue;
     seen.add(pair.baseToken.address);
-    candidates.push({ token: pair.baseToken.address, symbol: pair.baseToken.symbol, priceUsd: Number(pair.priceUsd), liquidityUsd: pair.liquidity?.usd || 0, pairUrl: pair.url, score: (pair.volume?.h24 || 0) / Math.max(pair.liquidity?.usd || 1, 1) });
+    candidates.push({
+      token: pair.baseToken.address, symbol: pair.baseToken.symbol,
+      priceUsd: Number(pair.priceUsd), liquidityUsd: pair.liquidity?.usd || 0,
+      pairUrl: pair.url, score: (pair.volume?.h24 || 0) / Math.max(pair.liquidity?.usd || 1, 1),
+      volumeM5Usd: Number(pair.volume?.m5 || 0),
+      priceChangeM5Percent: Number(pair.priceChange?.m5 || 0),
+      buysM5: Number(pair.txns?.m5?.buys || 0),
+      sellsM5: Number(pair.txns?.m5?.sells || 0)
+    });
   }
   return candidates.sort((a, b) => b.score - a.score);
+}
+
+export function qualifiesMomentum(candidate, momentum) {
+  return candidate.liquidityUsd >= momentum.minLiquidityUsd &&
+    candidate.volumeM5Usd >= momentum.minVolumeM5Usd &&
+    candidate.priceChangeM5Percent >= momentum.minPriceChangeM5Percent &&
+    candidate.priceChangeM5Percent <= momentum.maxPriceChangeM5Percent &&
+    candidate.buysM5 > candidate.sellsM5;
 }
 
 // Returns token -> { priceUsd, liquidityUsd } using the most liquid Solana pair.

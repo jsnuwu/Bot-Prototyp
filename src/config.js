@@ -35,6 +35,18 @@ export const config = Object.freeze({
   // Reject routes whose entry friction would consume too much of a $5 trade.
   maxEntryFeeUsd: Number(process.env.MAX_ENTRY_FEE_USD || 0.20),
   maxQuotePriceImpactPct: Number(process.env.MAX_QUOTE_PRICE_IMPACT_PCT || 2),
+  momentum: Object.freeze({
+    minLiquidityUsd: Number(process.env.MOMENTUM_MIN_LIQUIDITY_USD || 35_000),
+    minVolumeM5Usd: Number(process.env.MOMENTUM_MIN_VOLUME_M5_USD || 1_500),
+    minPriceChangeM5Percent: Number(process.env.MOMENTUM_MIN_PRICE_CHANGE_M5_PERCENT || 2),
+    maxPriceChangeM5Percent: Number(process.env.MOMENTUM_MAX_PRICE_CHANGE_M5_PERCENT || 45),
+    confirmationGainPercent: Number(process.env.MOMENTUM_CONFIRMATION_GAIN_PERCENT || 0.3),
+    confirmationWindowMs: Number(process.env.MOMENTUM_CONFIRMATION_WINDOW_MS || 5 * 60_000),
+    takeProfitPercent: Number(process.env.MOMENTUM_TAKE_PROFIT_PERCENT || 10),
+    takeProfitTwoPercent: Number(process.env.MOMENTUM_TAKE_PROFIT_TWO_PERCENT || 22),
+    trailingStopPercent: Number(process.env.MOMENTUM_TRAILING_STOP_PERCENT || 5),
+    stopLossPercent: Number(process.env.MOMENTUM_STOP_LOSS_PERCENT || 6)
+  }),
   lossStreakLimit: Number(process.env.LOSS_STREAK_LIMIT || 3),
   lossStreakWindowMs: Number(process.env.LOSS_STREAK_WINDOW_MS || 30 * 60_000),
   lossStreakPauseMs: Number(process.env.LOSS_STREAK_PAUSE_MS || 30 * 60_000),

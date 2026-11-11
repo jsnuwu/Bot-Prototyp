@@ -6,7 +6,7 @@ import { canOpen, closePosition, executionConfirmsExit, exitsDue, openPaperPosit
 import { quoteBuy, quoteSell } from "./jupiter.js";
 import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
-import { currentQuotes, discoverCandidates } from "./market.js";
+import { currentQuotes, discoverCandidates, qualifiesMomentum } from "./market.js";
 import { advanceResearch, ensureResearch, researchSummary } from "./research.js";
 import { createStore, resetDailyLossIfNeeded } from "./state.js";
 import { startHeartbeat } from "./heartbeat.js";
@@ -44,6 +44,31 @@ let running = null;
 let stopping = false;
 let jupiterError = null;
 let rpcError = null;
+
+function confirmedMomentumCandidates(candidates, now = Date.now()) {
+  state.momentumWatch ||= {};
+  const ready = [];
+  for (const candidate of candidates) {
+    const previous = state.momentumWatch[candidate.token];
+    const qualifies = qualifiesMomentum(candidate, config.momentum);
+    const confirmed = qualifies && previous && now - previous.at <= config.momentum.confirmationWindowMs &&
+      candidate.priceUsd >= previous.priceUsd * (1 + config.momentum.confirmationGainPercent / 100);
+    state.momentumWatch[candidate.token] = { at: now, priceUsd: candidate.priceUsd };
+    if (confirmed) {
+      ready.push({ ...candidate, strategy: "fresh-momentum", exitRules: {
+        takeProfitPercent: config.momentum.takeProfitPercent,
+        takeProfitTwoPercent: config.momentum.takeProfitTwoPercent,
+        takeProfitFraction: config.takeProfitFraction,
+        trailingStopPercent: config.momentum.trailingStopPercent,
+        stopLossPercent: config.momentum.stopLossPercent
+      } });
+    }
+  }
+  for (const [token, seen] of Object.entries(state.momentumWatch)) {
+    if (now - seen.at > config.momentum.confirmationWindowMs) delete state.momentumWatch[token];
+  }
+  return ready;
+}
 
 async function refreshPriorityFee() {
   try {
@@ -128,9 +153,10 @@ async function cycle() {
     await refreshPrices();
     const candidates = await discoverCandidates();
     advanceResearch(state, new Map(candidates.map((candidate) => [candidate.token, candidate])), candidates);
+    const momentumCandidates = confirmedMomentumCandidates(candidates);
     if (canOpen(state)) {
       const held = new Set(state.positions.map((p) => p.token));
-      for (const pick of candidates) {
+      for (const pick of momentumCandidates) {
         if (!canOpen(state)) break;
         const execution = held.has(pick.token) ? null : await buyQuote(pick);
         if (execution && openPaperPosition(state, pick, undefined, undefined, execution)) {

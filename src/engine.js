@@ -35,11 +35,12 @@ function updateLossStreakPause(state, now) {
 
 export function executionConfirmsExit(position, execution, reason) {
   if (!execution?.quotePriceUsd || !position.fillPriceUsd) return true;
+  const rules = position.exitRules || config;
   const quoteMovePct = (execution.quotePriceUsd / position.fillPriceUsd - 1) * 100;
-  if (reason === "take-profit-2") return quoteMovePct >= config.takeProfitTwoPercent;
-  if (reason === "take-profit-1") return quoteMovePct >= config.takeProfitPercent;
-  if (reason === "stop-loss") return quoteMovePct <= -config.stopLossPercent;
-  if (reason === "trailing-stop") return quoteMovePct <= (position.peakPriceUsd / position.fillPriceUsd - 1 - config.trailingStopPercent);
+  if (reason === "take-profit-2") return quoteMovePct >= rules.takeProfitTwoPercent;
+  if (reason === "take-profit-1") return quoteMovePct >= rules.takeProfitPercent;
+  if (reason === "stop-loss") return quoteMovePct <= -rules.stopLossPercent;
+  if (reason === "trailing-stop") return quoteMovePct <= (position.peakPriceUsd / position.fillPriceUsd - 1 - rules.trailingStopPercent);
   return true;
 }
 
@@ -83,6 +84,7 @@ export function openPaperPosition(state, candidate, now = new Date().toISOString
     tokens, rawTokens: execution?.rawTokens, decimals: execution?.decimals,
     liquidityUsd: candidate.liquidityUsd, rentSol: fees.tokenAccountRentSol,
     costUsd: amount + network, buyFeesUsd: Number(feesUsd.toFixed(4)),
+    exitRules: candidate.exitRules,
     pricing: execution ? "jupiter" : "model", route: execution?.route, openedAt: now
   });
   const via = execution ? `via ${execution.route || "Jupiter"}` : "model fees";
@@ -95,11 +97,12 @@ export function exitsDue(state, prices) {
   return state.positions.flatMap((position) => {
     const price = prices.get(position.token);
     if (!price || price <= 0) return [];
+    const rules = position.exitRules || config;
     position.peakPriceUsd = Math.max(position.peakPriceUsd || position.entryPriceUsd, price);
-    if (price <= position.entryPriceUsd * (1 - config.stopLossPercent / 100)) return [{ position, price, reason: "stop-loss" }];
-    if (position.takeProfitOneTaken && price <= position.peakPriceUsd * (1 - config.trailingStopPercent / 100)) return [{ position, price, reason: "trailing-stop" }];
-    if (position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + config.takeProfitTwoPercent / 100)) return [{ position, price, reason: "take-profit-2" }];
-    if (!position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + config.takeProfitPercent / 100)) return [{ position, price, reason: "take-profit-1", fraction: config.takeProfitFraction }];
+    if (price <= position.entryPriceUsd * (1 - rules.stopLossPercent / 100)) return [{ position, price, reason: "stop-loss" }];
+    if (position.takeProfitOneTaken && price <= position.peakPriceUsd * (1 - rules.trailingStopPercent / 100)) return [{ position, price, reason: "trailing-stop" }];
+    if (position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + rules.takeProfitTwoPercent / 100)) return [{ position, price, reason: "take-profit-2" }];
+    if (!position.takeProfitOneTaken && price >= position.entryPriceUsd * (1 + rules.takeProfitPercent / 100)) return [{ position, price, reason: "take-profit-1", fraction: rules.takeProfitFraction || config.takeProfitFraction }];
     return [];
   });
 }

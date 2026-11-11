@@ -97,4 +97,8 @@ test("does not take profit when an executable quote contradicts the chart price"
   assert.equal(executionConfirmsExit(position, { quotePriceUsd: 1.16 }, "take-profit-1"), true);
   assert.equal(executionConfirmsExit(position, { quotePriceUsd: 1.2 }, "take-profit-2"), false);
   assert.equal(executionConfirmsExit(position, { quotePriceUsd: 1.36 }, "take-profit-2"), true);
+  const momentumPosition = { ...position, exitRules: { takeProfitPercent: 10, takeProfitTwoPercent: 22, stopLossPercent: 6, trailingStopPercent: 5 } };
+  assert.equal(executionConfirmsExit(momentumPosition, { quotePriceUsd: 1.11 }, "take-profit-1"), true);
+  assert.equal(executionConfirmsExit(momentumPosition, { quotePriceUsd: 1.2 }, "take-profit-2"), false);
+  assert.equal(executionConfirmsExit(momentumPosition, { quotePriceUsd: 1.23 }, "take-profit-2"), true);
 });
