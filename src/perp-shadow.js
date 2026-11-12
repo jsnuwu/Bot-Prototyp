@@ -146,9 +146,9 @@ export async function advancePerpShadow(state, now = new Date().toISOString(), f
 }
 
 export function perpShadowSummary(shadow) {
-  if (!shadow) return { id: "perp-follower", label: "Public perps", trades: 0, openPositions: 0, pnlUsd: 0, totalPnlUsd: 0, winRatePercent: null, equityHistory: [], observers: 0, qualified: 0, lastError: null };
+  if (!shadow) return { id: "perp-follower", label: "Copy trades · long/short", trades: 0, openPositions: 0, pnlUsd: 0, totalPnlUsd: 0, winRatePercent: null, equityHistory: [], observers: 0, qualified: 0, lastError: null };
   const closed = shadow.closedTrades || [];
   const wins = closed.filter((trade) => trade.pnlUsd > 0).length;
   const latestEquity = shadow.equityHistory?.at(-1)?.valueUsd ?? shadow.cashUsd;
-  return { id: "perp-follower", label: "Public perps", trades: closed.length, openPositions: shadow.positions.length, pnlUsd: Number(closed.reduce((sum, trade) => sum + trade.pnlUsd, 0).toFixed(4)), totalPnlUsd: Number((latestEquity - config.startingCapitalUsd).toFixed(4)), winRatePercent: closed.length ? Number((wins / closed.length * 100).toFixed(1)) : null, equityHistory: (shadow.equityHistory || []).map((point) => ({ at: point.at, pnlUsd: point.valueUsd - config.startingCapitalUsd })), observers: Object.keys(shadow.observedWallets || {}).length, qualified: Object.keys(shadow.qualifiedWallets || {}).length, lastError: shadow.lastError };
+  return { id: "perp-follower", label: "Copy trades · long/short", trades: closed.length, openPositions: shadow.positions.length, pnlUsd: Number(closed.reduce((sum, trade) => sum + trade.pnlUsd, 0).toFixed(4)), totalPnlUsd: Number((latestEquity - config.startingCapitalUsd).toFixed(4)), winRatePercent: closed.length ? Number((wins / closed.length * 100).toFixed(1)) : null, equityHistory: (shadow.equityHistory || []).map((point) => ({ at: point.at, pnlUsd: point.valueUsd - config.startingCapitalUsd })), observers: Object.keys(shadow.observedWallets || {}).length, qualified: Object.keys(shadow.qualifiedWallets || {}).length, lastError: shadow.lastError };
 }
