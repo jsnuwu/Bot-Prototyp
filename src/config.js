@@ -1,7 +1,9 @@
 export const config = Object.freeze({
   mode: "paper",
-  startingCapitalUsd: 100,
-  maxTradeUsd: 5,
+  startingCapitalUsd: 200,
+  maxTradeUsd: 10,
+  // Changing this value deliberately starts a fresh persisted paper run.
+  paperRunId: "paper-200usd-2026-11-12",
   takeProfitPercent: 15,
   takeProfitTwoPercent: 35,
   takeProfitFraction: 0.5,
@@ -33,7 +35,7 @@ export const config = Object.freeze({
   }),
   rpcUrl: process.env.SOLANA_RPC_URL || "",
   priorityFeeRefreshMs: 60_000,
-  // Reject routes whose entry friction would consume too much of a $5 trade.
+  // Reject routes whose entry friction would consume too much of a $10 trade.
   maxEntryFeeUsd: Number(process.env.MAX_ENTRY_FEE_USD || 0.20),
   maxQuotePriceImpactPct: Number(process.env.MAX_QUOTE_PRICE_IMPACT_PCT || 2),
   momentum: Object.freeze({

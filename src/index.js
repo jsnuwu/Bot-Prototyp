@@ -8,7 +8,7 @@ import { fetchPriorityFeeSol } from "./rpc.js";
 import { SOL_MINT } from "./costs.js";
 import { currentQuotes, discoverCandidates, qualifiesMomentum } from "./market.js";
 import { advanceResearch, ensureResearch, researchSummary } from "./research.js";
-import { createStore, resetDailyLossIfNeeded } from "./state.js";
+import { createStore, freshState, resetDailyLossIfNeeded } from "./state.js";
 import { startHeartbeat } from "./heartbeat.js";
 import { computeStats, tradesCsv } from "./stats.js";
 
@@ -16,6 +16,10 @@ assertPaperOnly();
 if (process.env.RENDER === "true" && !config.databaseUrl) throw new Error("DATABASE_URL is required on Render");
 const store = await createStore({ databaseUrl: config.databaseUrl, stateFile: config.stateFile });
 let state = await store.load();
+if (state.paperRunId !== config.paperRunId) {
+  state = { ...freshState(), cashUsd: config.startingCapitalUsd, paperRunId: config.paperRunId };
+  await store.save(state);
+}
 ensureResearch(state);
 console.log(`State storage: ${store.kind}`);
 

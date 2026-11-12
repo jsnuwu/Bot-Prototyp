@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { quoteBuy, quoteSell, USDC_MINT } from "../src/jupiter.js";
 import { closePosition, openPaperPosition } from "../src/engine.js";
+import { config } from "../src/config.js";
 
 const jup = { enabled: true, apiKey: "test-key", baseUrl: "https://jup.test/swap/v1" };
 const fees = { dexFeePercent: 0.25, slippagePercent: 0.5, baseFeeSol: 0.000005, priorityFeeSol: 0.0005, tokenAccountRentSol: 0.002, defaultSolPriceUsd: 150 };
@@ -40,17 +41,17 @@ test("rejects quotes that do not match the market price", async () => {
 
 test("engine books Jupiter-priced trades with net P&L", async () => {
   const state = { cashUsd: 100, positions: [], closedTrades: [], dailyLossUsd: 0, lossDate: new Date().toISOString().slice(0, 10), solPriceUsd: 100 };
-  const buy = await quoteBuy({ mint: "MINT", amountUsd: 5, priceUsd: 0.001 }, jup, mockFetch(4_900_000_000));
+  const buy = await quoteBuy({ mint: "MINT", amountUsd: config.maxTradeUsd, priceUsd: 0.001 }, jup, mockFetch(9_800_000_000));
   assert.equal(openPaperPosition(state, { token: "MINT", symbol: "MEME", priceUsd: 0.001, liquidityUsd: 80_000 }, undefined, fees, buy), true);
   const position = state.positions[0];
   assert.equal(position.pricing, "jupiter");
-  const sell = await quoteSell({ mint: "MINT", rawTokens: position.rawTokens, tokens: position.tokens, priceUsd: 0.00115 }, jup, mockFetch(5_550_000));
+  const sell = await quoteSell({ mint: "MINT", rawTokens: position.rawTokens, tokens: position.tokens, priceUsd: 0.00115 }, jup, mockFetch(11_100_000));
   closePosition(state, position, 0.00115, "take-profit", undefined, fees, sell);
   const trade = state.closedTrades[0];
   assert.equal(trade.exitPricing, "jupiter");
   assert.equal(state.positions.length, 0);
-  // Gross +15 % would be +$0.75; fees, impact and network costs make it smaller.
-  assert.ok(trade.pnlUsd > 0 && trade.pnlUsd < 0.75, `pnl ${trade.pnlUsd}`);
+  // Gross +15 % is reduced by fees, impact and network costs.
+  assert.ok(trade.pnlUsd > 0 && trade.pnlUsd < config.maxTradeUsd * 0.15, `pnl ${trade.pnlUsd}`);
   assert.ok(Math.abs(state.cashUsd - (100 + trade.pnlUsd)) < 1e-4);
   assert.equal(USDC_MINT.length, 44);
 });
