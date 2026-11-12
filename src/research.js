@@ -11,12 +11,13 @@ const maxPositions = 8;
 const tradeUsd = config.maxTradeUsd;
 
 export function ensureResearch(state, now = new Date().toISOString()) {
-  state.research ||= { startedAt: now, strategies: researchStrategies.map((strategy) => ({ ...strategy, positions: [], closedTrades: [] })) };
+  state.research ||= { startedAt: now, strategies: researchStrategies.map((strategy) => ({ ...strategy, positions: [], closedTrades: [], equityHistory: [] })) };
   for (const definition of researchStrategies) {
     if (!state.research.strategies.some((strategy) => strategy.id === definition.id)) {
-      state.research.strategies.push({ ...definition, positions: [], closedTrades: [] });
+      state.research.strategies.push({ ...definition, positions: [], closedTrades: [], equityHistory: [] });
     }
   }
+  for (const strategy of state.research.strategies) strategy.equityHistory ||= [];
   return state.research;
 }
 
@@ -29,6 +30,17 @@ function close(strategy, position, quote, reason, solPriceUsd, now) {
   const pnlUsd = sell.cashInUsd - position.cashOutUsd;
   strategy.closedTrades.push({ token: position.token, symbol: position.symbol, openedAt: position.openedAt, closedAt: now, reason, pnlUsd: Number(pnlUsd.toFixed(4)) });
   strategy.positions = strategy.positions.filter((item) => item !== position);
+}
+
+function markToMarket(strategy, quotes, solPriceUsd) {
+  const realizedPnlUsd = (strategy.closedTrades || []).reduce((sum, trade) => sum + trade.pnlUsd, 0);
+  const unrealizedPnlUsd = (strategy.positions || []).reduce((sum, position) => {
+    const quote = quotes.get(position.token);
+    if (!quote) return sum;
+    const sell = simulateSell({ tokens: position.tokens, priceUsd: quote.priceUsd, liquidityUsd: quote.liquidityUsd, solPriceUsd, rentSol: position.rentSol }, config.fees);
+    return sum + sell.cashInUsd - position.cashOutUsd;
+  }, 0);
+  return { realizedPnlUsd, unrealizedPnlUsd, totalPnlUsd: realizedPnlUsd + unrealizedPnlUsd };
 }
 
 // Runs independent forward tests. It never opens or closes a main paper position.
@@ -48,6 +60,8 @@ export function advanceResearch(state, quotes, candidates = [], now = new Date()
       strategy.positions.push({ token: candidate.token, symbol: candidate.symbol, entryPriceUsd: candidate.priceUsd, liquidityUsd: candidate.liquidityUsd, tokens: buy.tokens, cashOutUsd: buy.cashOutUsd, rentSol: buy.rentSol, openedAt: now });
     }
     strategy.closedTrades = strategy.closedTrades.slice(-500);
+    const equity = markToMarket(strategy, quotes, solPriceUsd);
+    strategy.equityHistory = [...(strategy.equityHistory || []), { at: now, pnlUsd: Number(equity.totalPnlUsd.toFixed(4)) }].slice(-240);
   }
   return research;
 }
@@ -57,7 +71,8 @@ export function researchSummary(research) {
     const closed = strategy.closedTrades || [];
     const pnlUsd = closed.reduce((sum, trade) => sum + trade.pnlUsd, 0);
     const wins = closed.filter((trade) => trade.pnlUsd > 0).length;
-    return { id: strategy.id, label: strategy.label, trades: closed.length, openPositions: strategy.positions.length, pnlUsd: Number(pnlUsd.toFixed(4)), winRatePercent: closed.length ? Number((wins / closed.length * 100).toFixed(1)) : null };
+    const latest = strategy.equityHistory?.at(-1);
+    return { id: strategy.id, label: strategy.label, trades: closed.length, openPositions: strategy.positions.length, pnlUsd: Number(pnlUsd.toFixed(4)), totalPnlUsd: latest?.pnlUsd ?? Number(pnlUsd.toFixed(4)), winRatePercent: closed.length ? Number((wins / closed.length * 100).toFixed(1)) : null, equityHistory: strategy.equityHistory || [] };
   });
 }
 

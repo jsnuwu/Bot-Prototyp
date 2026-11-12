@@ -21,5 +21,7 @@ test("research closes a shadow position and publishes comparable statistics", ()
   const results = researchSummary(paper.research);
   assert.equal(results.every((strategy) => strategy.trades === 1), true);
   assert.equal(results.every((strategy) => strategy.pnlUsd > 0), true);
+  assert.equal(results.every((strategy) => strategy.equityHistory.length === 2), true);
+  assert.equal(results.every((strategy) => strategy.totalPnlUsd > 0), true);
 });
 
