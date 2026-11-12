@@ -2,9 +2,9 @@ import { config } from "./config.js";
 import { simulateBuy, simulateSell } from "./costs.js";
 
 export const researchStrategies = Object.freeze([
-  { id: "broad", label: "Broad", minLiquidityUsd: 25_000, minScore: 0.05, takeProfitPercent: 15, stopLossPercent: 8 },
-  { id: "liquid", label: "Liquid", minLiquidityUsd: 100_000, minScore: 0.1, takeProfitPercent: 15, stopLossPercent: 8 },
-  { id: "momentum", label: "Momentum", minLiquidityUsd: 50_000, minScore: 0.25, takeProfitPercent: 20, stopLossPercent: 8 }
+  { id: "broad", label: "Early & wide", minLiquidityUsd: 25_000, minScore: 0.05, takeProfitPercent: 15, stopLossPercent: 8 },
+  { id: "liquid", label: "Only liquid", minLiquidityUsd: 100_000, minScore: 0.1, takeProfitPercent: 15, stopLossPercent: 8 },
+  { id: "momentum", label: "Strong move", minLiquidityUsd: 50_000, minScore: 0.25, takeProfitPercent: 20, stopLossPercent: 8 }
 ]);
 
 const maxPositions = 8;
@@ -17,7 +17,11 @@ export function ensureResearch(state, now = new Date().toISOString()) {
       state.research.strategies.push({ ...definition, positions: [], closedTrades: [], equityHistory: [] });
     }
   }
-  for (const strategy of state.research.strategies) strategy.equityHistory ||= [];
+  for (const strategy of state.research.strategies) {
+    strategy.equityHistory ||= [];
+    const definition = researchStrategies.find((item) => item.id === strategy.id);
+    if (definition) strategy.label = definition.label;
+  }
   return state.research;
 }
 
